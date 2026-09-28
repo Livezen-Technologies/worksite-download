@@ -168,6 +168,10 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
       return data;
     }
     const error = await parseError(res);
+    // Server-side staff MFA policy (FR-UC-AUTH-02): send the user to enrolment.
+    if (error.code === 'MFA_ENROLLMENT_REQUIRED' && typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin/account/security')) {
+      window.location.assign('/admin/account/security?required=1');
+    }
     const canPrompt = method !== 'GET' && !opts.skipMfaPrompt && mfaHandler && res.status === 401 && MFA_CODES.has(error.code) && attempt < 3;
     if (!canPrompt) throw error;
     const code = await mfaHandler!(error, attempt);

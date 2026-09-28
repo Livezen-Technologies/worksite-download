@@ -13,7 +13,23 @@ class RolloutService
 {
     public const DEFAULT_STAGES = [5, 25, 50, 100];
 
-    public const DEFAULT_THRESHOLDS = ['dwell_hours' => 24, 'min_success_rate' => 0.97, 'max_failure_rate' => 0.05, 'max_rollback_rate' => 0.02];
+    /** Rates are percentages (0–100), like every rate in the API. */
+    public const DEFAULT_THRESHOLDS = ['dwell_hours' => 24, 'min_success_rate' => 97.0, 'max_failure_rate' => 5.0, 'max_rollback_rate' => 2.0];
+
+    /** Merge stored thresholds with defaults; legacy fractional values (≤ 1) are read as fractions. */
+    public static function thresholds(?string $json): array
+    {
+        $t = array_merge(self::DEFAULT_THRESHOLDS, json_decode((string) $json, true) ?: []);
+        foreach (['min_success_rate', 'max_failure_rate', 'max_rollback_rate'] as $k) {
+            $t[$k] = (float) $t[$k];
+            if ($t[$k] > 0 && $t[$k] <= 1) {
+                $t[$k] *= 100;
+            }
+        }
+        $t['dwell_hours'] = (float) $t['dwell_hours'];
+
+        return $t;
+    }
 
     public static function cohortBucket(string $releasePublicId, string $deviceRef): int
     {
@@ -71,7 +87,12 @@ class RolloutService
         if ($stages === [] || end($stages) !== 100 || min($stages) < 1 || count(array_unique($stages)) !== count($stages)) {
             throw ApiException::validation(['stages' => 'Stages must be increasing percentages ending at 100']);
         }
-        $thresholds = array_merge(self::DEFAULT_THRESHOLDS, json_decode((string) $row['thresholds'], true) ?: [], (array) ($in['thresholds'] ?? []));
+        $thresholds = array_merge(self::thresholds($row['thresholds']), array_intersect_key((array) ($in['thresholds'] ?? []), self::DEFAULT_THRESHOLDS));
+        foreach (['min_success_rate', 'max_failure_rate', 'max_rollback_rate'] as $k) {
+            if (! is_numeric($thresholds[$k]) || $thresholds[$k] < 0 || $thresholds[$k] > 100) {
+                throw ApiException::validation(['thresholds' => "{$k} must be a percentage between 0 and 100"]);
+            }
+        }
         $before     = $this->present($release);
         $update     = [
             'mode'         => $mode,
@@ -261,7 +282,7 @@ class RolloutService
             'completed_at' => Catalog::iso($row['completed_at']),
             'auto_advance' => (bool) $row['auto_advance'],
             'auto_pause'   => (bool) $row['auto_pause'],
-            'thresholds'   => array_merge(self::DEFAULT_THRESHOLDS, json_decode((string) $row['thresholds'], true) ?: []),
+            'thresholds'   => self::thresholds($row['thresholds']),
             'rules'        => $rules,
             'progress'     => $this->progress($release, $stages, (int) $row['stage_no']),
         ];
@@ -303,11 +324,11 @@ class RolloutService
             ->where('ro.status', 'ACTIVE')->where('r.status', 'PUBLISHED')->get()->getResultArray();
         foreach ($rows as $ro) {
             $release = Catalog::releaseById((int) $ro['release_id']);
-            $t       = array_merge(self::DEFAULT_THRESHOLDS, json_decode((string) $ro['thresholds'], true) ?: []);
+            $t       = self::thresholds($ro['thresholds']);
             $stats   = (new TelemetryService())->releaseStats((int) $ro['release_id']);
             $attempts = $stats['installed'] + $stats['failed'];
-            $failRate = $attempts > 0 ? $stats['failed'] / $attempts : 0.0;
-            $rbRate   = $attempts > 0 ? $stats['rolled_back'] / $attempts : 0.0;
+            $failRate = $attempts > 0 ? $stats['failed'] * 100 / $attempts : 0.0;
+            $rbRate   = $attempts > 0 ? $stats['rolled_back'] * 100 / $attempts : 0.0;
 
             $gate = null;
             if (class_exists(\App\Services\BugTrace\ReleaseHealthService::class)) {
@@ -320,9 +341,9 @@ class RolloutService
 
             $problem = null;
             if ($attempts >= 20 && $failRate > $t['max_failure_rate']) {
-                $problem = sprintf('Install failure rate %.1f%% above %.1f%%', $failRate * 100, $t['max_failure_rate'] * 100);
+                $problem = sprintf('Install failure rate %.1f%% above %.1f%%', $failRate, $t['max_failure_rate']);
             } elseif ($attempts >= 20 && $rbRate > $t['max_rollback_rate']) {
-                $problem = sprintf('Rollback rate %.1f%% above %.1f%%', $rbRate * 100, $t['max_rollback_rate'] * 100);
+                $problem = sprintf('Rollback rate %.1f%% above %.1f%%', $rbRate, $t['max_rollback_rate']);
             } elseif (($gate['state'] ?? 'OK') === 'BLOCK') {
                 $problem = 'Bug Trace gate: ' . implode('; ', $gate['reasons'] ?? []);
             }

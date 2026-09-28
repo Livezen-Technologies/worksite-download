@@ -78,12 +78,14 @@ export function AdminLayout() {
       <a href="#admin-main" className="sr-only-focusable absolute top-2 left-2 z-50 rounded bg-white px-3 py-2 text-ink">
         Skip to content
       </a>
-      <aside className="sticky top-0 hidden h-screen bg-navy lg:block">
-        <Link to="/admin" className="flex items-center gap-2 px-4 py-4 text-[13.5px] font-bold text-white">
-          <LogoMark /> Update Center
-        </Link>
-        <div className="h-[calc(100vh-60px)]">
-          <Sidebar user={user} />
+      <aside className="hidden bg-navy lg:block">
+        <div className="sticky top-0 h-screen">
+          <Link to="/admin" className="flex items-center gap-2 px-4 py-4 text-[13.5px] font-bold text-white">
+            <LogoMark /> Update Center
+          </Link>
+          <div className="h-[calc(100vh-60px)]">
+            <Sidebar user={user} />
+          </div>
         </div>
       </aside>
       {drawer && (

@@ -16,7 +16,8 @@ class TusController extends BaseApiController
 {
     private function tus($res)
     {
-        return $res->setHeader('Tus-Resumable', '1.0.0')->setHeader('Cache-Control', 'no-store');
+        // tus responses have no body; a non-HTML type also keeps dev tooling from appending one.
+        return $res->setHeader('Tus-Resumable', '1.0.0')->setHeader('Cache-Control', 'no-store')->setContentType('application/offset+octet-stream')->setBody('');
     }
 
     public function options(?string $id = null)

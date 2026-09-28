@@ -307,11 +307,11 @@ function pageFor(s: AppSeed): DownloadPage {
 // ---------------------------------------------------------------- channels
 
 export const CHANNELS: AdminChannel[] = [
-  { id: 'chn_stable', code: 'STABLE', name: 'Stable', description: 'Fully tested releases for everyone. Recommended for production use.', is_public: true, is_default: true, allow_direct_download: true, allow_auto_update: true, access_rule: 'Anyone', retention: 'All release metadata; binaries of last 10' },
-  { id: 'chn_beta', code: 'BETA', name: 'Beta', description: 'Preview upcoming features a few weeks early. Sign in and opt in from your portal profile.', is_public: false, is_default: false, allow_direct_download: true, allow_auto_update: true, access_rule: 'Portal beta users; tenants with beta in TPT', retention: 'Last 5' },
-  { id: 'chn_dev', code: 'DEV', name: 'Dev', description: 'Nightly developer builds for authorised developers and QA.', is_public: false, is_default: false, allow_direct_download: false, allow_auto_update: true, access_rule: 'Staff role Developer/QA; TPT dev entitlement', retention: 'Last 10 builds' },
-  { id: 'chn_internal', code: 'INTERNAL', name: 'Internal', description: 'Livezen staff and internal tenant dog-fooding.', is_public: false, is_default: false, allow_direct_download: false, allow_auto_update: true, access_rule: 'Livezen staff / internal tenant', retention: 'Last 10' },
-  { id: 'chn_custom', code: 'CUSTOM', name: 'Custom', description: 'Per allow-list channels for named tenants and organisations.', is_public: false, is_default: false, allow_direct_download: false, allow_auto_update: true, access_rule: 'Named tenants/orgs', retention: 'Configurable' },
+  { id: 'chn_stable', code: 'STABLE', name: 'Stable', description: 'Fully tested releases for everyone. Recommended for production use.', is_public: true, is_default: true, allow_direct_download: true, allow_auto_update: true, access_rule: { audience: 'anyone' }, retention: { binaries: 10 } },
+  { id: 'chn_beta', code: 'BETA', name: 'Beta', description: 'Preview upcoming features a few weeks early. Sign in and opt in from your portal profile.', is_public: false, is_default: false, allow_direct_download: true, allow_auto_update: true, access_rule: { audience: 'signed_in_beta', tpt: 'beta' }, retention: { binaries: 5 } },
+  { id: 'chn_dev', code: 'DEV', name: 'Dev', description: 'Nightly developer builds for authorised developers and QA.', is_public: false, is_default: false, allow_direct_download: false, allow_auto_update: true, access_rule: { audience: 'staff', roles: ['developer', 'qa'], tpt: 'dev' }, retention: { binaries: 10 } },
+  { id: 'chn_internal', code: 'INTERNAL', name: 'Internal', description: 'Livezen staff and internal tenant dog-fooding.', is_public: false, is_default: false, allow_direct_download: false, allow_auto_update: true, access_rule: { audience: 'internal', tpt: 'internal' }, retention: { binaries: 10 } },
+  { id: 'chn_custom', code: 'CUSTOM', name: 'Custom', description: 'Per allow-list channels for named tenants and organisations.', is_public: false, is_default: false, allow_direct_download: false, allow_auto_update: true, access_rule: { audience: 'allow_list', tenants: [] }, retention: { binaries: 10 } },
 ];
 
 // ---------------------------------------------------------------- releases
@@ -538,7 +538,7 @@ export function makeChangelog(summary: string | null, highlights: string[], part
 
 const approvals = (at: string): Approval[] => [
   { kind: 'QA', decision: 'PASS', platform: null, user: 'N. Perera', comment: 'Smoke + regression suites green on all platforms', created_at: at },
-  { kind: 'RELEASE_MANAGER', decision: 'APPROVED', platform: null, user: 'R. Fernando', comment: null, created_at: at },
+  { kind: 'RELEASE', decision: 'APPROVED', platform: null, user: 'R. Fernando', comment: null, created_at: at },
 ];
 
 function rollout(status: Rollout['status'], stages: number[], stage_no: number, pct: number): Rollout {
@@ -660,6 +660,11 @@ const RELEASE_SEEDS: ReleaseSeed[] = [
     app: 'app_syncagent', version: '0.9.5', build: 905, status: 'PAUSED', date: '2026-09-24', published: day(4), min: '0.8.0',
     changelog: makeChangelog('Selective sync.', [], { new_features: ['Selective sync'] }), rollout: rollout('PAUSED', [5, 25, 50, 100], 2, 25),
     extra: { last_error: 'Auto-paused: update failure rate 4.1% above 3% threshold' },
+  },
+  {
+    app: 'app_server', version: '3.4.1', build: 34101, status: 'DRAFT', type: 'RECOMMENDED', min: '3.2.0',
+    changelog: makeChangelog(null, [], {}, null),
+    packagesOpts: { serverStates: { BUSINESS: 'EMPTY', ENTERPRISE: 'EMPTY' } },
   },
   {
     app: 'app_server', version: '3.4.0', build: 34012, status: 'APPROVED', type: 'RECOMMENDED', date: '2026-09-30', min: '3.2.0',
@@ -970,10 +975,10 @@ export const REPORTS: ReportDetail[] = [
 ISSUES[0].reports = [REPORTS[0]];
 
 export const ALERTS: BugAlert[] = [
-  { id: 'alr_1', name: 'New P0/P1 issue with users', condition: 'new_issue_priority_high', threshold: 100, window: '1h', channels: ['email', 'chat'], enabled: true, project: null },
-  { id: 'alr_2', name: 'Crash-free users below 99%', condition: 'crash_free_users_below', threshold: 99, window: '24h', channels: ['email', 'chat'], enabled: true, project: null },
-  { id: 'alr_3', name: 'Regression detected', condition: 'issue_regressed', threshold: 1, window: 'event', channels: ['email'], enabled: true, project: null },
-  { id: 'alr_4', name: 'Update install failures > 5%', condition: 'update_failure_rate_above', threshold: 5, window: '6h', channels: ['chat'], enabled: false, project: 'prj_desktop' },
+  { id: 'alr_default_new_crash', name: 'New crash issue', condition: 'new_issue', threshold: { types: ['crash', 'hang'] }, channels: ['in_app', 'email'], enabled: true, digest: false, quiet_hours: null, project: null },
+  { id: 'alr_2', name: 'Crash-free users below 99%', condition: 'crash_free_below', threshold: { value: 99 }, channels: ['in_app', 'email', 'webhook'], enabled: true, digest: false, quiet_hours: '22:00-07:00', project: null },
+  { id: 'alr_default_regression', name: 'Regression', condition: 'regression', threshold: {}, channels: ['in_app', 'email'], enabled: true, digest: false, quiet_hours: null, project: null },
+  { id: 'alr_default_spike', name: 'Events spike', condition: 'spike', threshold: { multiplier: 5, min_events: 20 }, channels: ['in_app'], enabled: false, digest: true, quiet_hours: null, project: 'btp_dsk' },
 ];
 
 // ---------------------------------------------------------------- build initial state

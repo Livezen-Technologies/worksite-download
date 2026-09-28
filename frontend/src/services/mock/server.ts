@@ -368,7 +368,7 @@ function stepDetail(step: string, rev: Revision, p: AdminPackage): string {
   const sig = { windows: 'Authenticode', macos: 'Developer ID + notarization', linux: 'GPG', server: 'Release key' }[p.platform as string] ?? 'signature';
   return (
     {
-      quarantine: `Upload complete — stored in quarantine prefix tmp/…/${(rev.sha256 ?? 'a91f').slice(0, 4)}`,
+      quarantine: `tmp/…/${(rev.sha256 ?? 'a91f').slice(0, 4)}`,
       scan: 'Malware scan (ClamAV) — clean · 6.2 s',
       sha256: `SHA-256 generated ${(rev.sha256 ?? '').slice(0, 4)}…${(rev.sha256 ?? '').slice(-4)}`,
       metadata: p.platform === 'windows' ? `Metadata — PE32+ ${p.architecture}, product version matches release` : 'Metadata matches release',
@@ -383,7 +383,7 @@ function stepDetail(step: string, rev: Revision, p: AdminPackage): string {
 function startProcessing(r: AdminReleaseDetail, p: AdminPackage, rev: Revision) {
   rev.status = 'PROCESSING';
   rev.sha256 = fakeSha(`${rev.file_name}-${Date.now()}`);
-  rev.pipeline = PIPELINE_ORDER.map((step, i) => ({ step, status: i === 0 ? 'done' : 'pending', detail: i === 0 ? 'Upload complete' : null, at: i === 0 ? new Date().toISOString() : null }));
+  rev.pipeline = PIPELINE_ORDER.map((step, i) => ({ step, status: i === 0 ? 'done' : 'pending', detail: i === 0 ? 'resumable tus upload' : null, at: i === 0 ? new Date().toISOString() : null }));
   p.status = 'PROCESSING';
   pipelineClock[rev.id] = Date.now();
   if (r.status === 'DRAFT') r.status = 'UPLOADING';
@@ -439,7 +439,7 @@ function computeChecklist(r: AdminReleaseDetail): Checklist {
   items.push(item('manifest', `Manifest generated${r.status === 'PUBLISHED' ? '' : ' (draft)'}`, manifestReady));
   items.push(item('manifest_sig', 'Manifest signature verified', manifestReady));
   const qa = r.approvals.some((a) => a.kind === 'QA' && a.decision === 'PASS');
-  const rm = r.approvals.some((a) => a.kind === 'RELEASE_MANAGER');
+  const rm = r.approvals.some((a) => a.kind === 'RELEASE');
   items.push(item('approvals', 'QA approval + Release Manager approval', qa && rm ? true : null, qa ? (rm ? null : 'Waiting for Release Manager') : 'Waiting for QA', r.channel === 'STABLE'));
   items.push(item('cdn_probe', 'Storage objects readable via CDN (HEAD probe)', manifestReady));
   return { passed: items.every((i) => !i.blocking || i.status === 'pass' || i.status === 'skipped'), items };
@@ -496,7 +496,7 @@ function manifestInfo(r: AdminReleaseDetail): ManifestInfo {
     id: `mf_${r.id}`,
     manifest_version: r.status === 'PUBLISHED' ? 3 : 1,
     key_id: 'ws-release-2026a',
-    signature_valid: ready.length === r.packages.length && ready.length > 0,
+    signature_valid: ready.length === r.packages.length && ready.length > 0 ? true : null,
     sha256: fakeSha(JSON.stringify(json)),
     generated_at: r.updated_at,
     published_at: r.published_at,
@@ -1032,7 +1032,7 @@ route('POST', '/admin/releases/{id}/qa', (req, p) => {
 route('POST', '/admin/releases/{id}/approve', (req, p) => {
   const u = requirePerm('release.approve');
   const r = releaseById(p.id);
-  r.approvals.push({ kind: 'RELEASE_MANAGER', decision: 'APPROVED', platform: null, user: u.name, comment: req.body?.comment ?? null, created_at: new Date().toISOString() });
+  r.approvals.push({ kind: 'RELEASE', decision: 'APPROVED', platform: null, user: u.name, comment: req.body?.comment ?? null, created_at: new Date().toISOString() });
   return transition(r, 'APPROVED', 'release.approve');
 });
 route('GET', '/admin/releases/{id}/publish-summary', (_r, p) => {

@@ -13,7 +13,7 @@ import { formatDateTime, formatNumber, titleCase } from '@/core/format';
 
 export function approvalsLabel(approvals: Approval[]): string {
   const qa = approvals.filter((a) => a.kind === 'QA' && a.decision === 'PASS').map((a) => a.user);
-  const rm = approvals.filter((a) => a.kind === 'RELEASE_MANAGER').map((a) => a.user);
+  const rm = approvals.filter((a) => a.kind === 'RELEASE').map((a) => a.user);
   const parts = [qa.length ? `QA ${Array.from(new Set(qa)).join(', ')}` : null, rm.length ? `RM ${Array.from(new Set(rm)).join(', ')}` : null].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'None';
 }

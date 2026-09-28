@@ -121,7 +121,7 @@ class TelemetryService
             'failed'           => $fail,
             'rolled_back'      => (int) ($by['rolled_back'] ?? 0),
             'downloaded'       => (int) ($by['download_completed'] ?? 0),
-            'success_rate'     => $ok + $fail > 0 ? round($ok / ($ok + $fail), 4) : null,
+            'success_rate'     => $ok + $fail > 0 ? round($ok * 100 / ($ok + $fail), 2) : null, // percent
             'eligible_devices' => $eligible,
         ];
     }

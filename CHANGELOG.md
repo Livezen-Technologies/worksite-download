@@ -89,6 +89,17 @@ B1 Bug Trace core).
   SigV4 presigning and HMAC-signed CDN URLs, copy-and-verify storage
   migration, component health checks, DB job queue, hash-chained append-only
   audit log with verification and CSV export, in-app/email notifications.
+- **Frontend (`frontend/`)** — React 19 + TypeScript + Tailwind v4:
+  public download site (platform detection with manual override, app and
+  release pages, previous versions with support states, changelog + feeds,
+  SEO metadata and JSON-LD) with SSR prerendering so download links work
+  without JavaScript; admin portal per §7.1 (dashboard, 8-step application
+  wizard, release screen with all nine tabs, resumable tus uploads with live
+  pipeline, publish/withdraw modals with step-up MFA or passkey, rollouts,
+  analytics, server editions and campaigns, installations and fleet,
+  storage/health, users/roles/API clients/security/audit, Bug Trace issues,
+  reports inbox, release health and alerts); user portal (downloads incl.
+  beta, history, notifications, bug reports, profile, security).
 - **Deployment** — Docker images for update-web / update-api / update-worker /
   update-scheduler / signing-service, compose stack (MariaDB, Redis, optional
   ClamAV), nginx site with CSP/HSTS and prerender fallback, mTLS front for the

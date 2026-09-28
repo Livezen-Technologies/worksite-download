@@ -17,6 +17,10 @@ All timestamps are ISO-8601 UTC strings (`2026-09-27T04:30:00Z`). Sizes are byte
   `X-MFA-Token: <6-digit TOTP or recovery code>`. If absent and no verification within 10 min → `401 MFA_REQUIRED`;
   the UI then shows `<MfaPrompt>` and retries with the header. `/auth/step-up` can pre-verify
   (valid 10 min; `step_up_valid_until` in `/auth/me`).
+* Rates and shares are **percentages (0–100)**: `success_rate`, `update_success_rate`, `crash_free_*`, `pct`,
+  `*_pct`, and rollout `thresholds.min_success_rate / max_failure_rate / max_rollback_rate`.
+* Structured policy fields are JSON objects, not display strings: channel `access_rule` / `retention`, Bug Trace
+  alert `threshold` (e.g. `{types:['crash']}`, `{multiplier, min_events}`, `{events, users}`, `{value}`).
 * IDs in URLs are public ids (`app_…`, `rel_…`, `pkg_…`, `rev_…`, `usr_…`, `cli_…`), never numeric.
 
 ## Shared types (TypeScript)

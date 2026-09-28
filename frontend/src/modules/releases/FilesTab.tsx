@@ -263,7 +263,7 @@ export function ManifestPreviewCard({ release }: { release: AdminReleaseDetail }
         </p>
         <p>
           Key <span className="font-mono">{m?.key_id ?? '—'}</span> · Signature{' '}
-          {m?.signature_valid ? <strong className="text-ok">Valid</strong> : m ? <strong className="text-bad">Invalid</strong> : <span className="text-subtle">not generated</span>}
+          {m?.signature_valid ? <strong className="text-ok">Valid</strong> : m?.signature_valid === false ? <strong className="text-bad">Invalid</strong> : m ? <span className="text-warn">pending (draft)</span> : <span className="text-subtle">not generated</span>}
         </p>
         <div className="flex gap-2 pt-2">
           <Button size="sm" disabled={!m} onClick={() => setJson(true)}>

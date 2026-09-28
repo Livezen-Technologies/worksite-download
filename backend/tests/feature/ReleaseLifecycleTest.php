@@ -114,6 +114,14 @@ final class ReleaseLifecycleTest extends UcTestCase
 
         $this->publish($id);
 
+        // publish-summary reports the real step-up requirement (dev user without MFA → none).
+        $sid = $this->createReadyRelease('2.7.1', 27101);
+        [, $sum] = $this->api($this->rm, 'GET', "api/v1/admin/releases/{$sid}/publish-summary");
+        $this->assertFalse($sum['requires_mfa']);
+        config('UpdateCenter')->environmentName = 'PRODUCTION';
+        $this->assertTrue((new \App\Services\ReleaseService(service('authContext')))->stepUpNeeded() || service('authContext')->hasRecentMfa());
+        config('UpdateCenter')->environmentName = 'DEV';
+
         // Signed manifests exist and verify against the release key.
         [, $man] = $this->api($this->rm, 'GET', "api/v1/admin/releases/{$id}/manifest");
         $this->assertTrue($man['release']['signature_valid']);
@@ -253,5 +261,32 @@ final class ReleaseLifecycleTest extends UcTestCase
         cache()->clean();
         $b = $this->json($this->get('api/v1/desktop/update?app_id=lk.worksuite.desktop&current_version=2.6.0&platform=windows&architecture=x64&device_id=hmac:stable'))['rollout']['in_cohort'];
         $this->assertSame($a, $b);
+    }
+
+    public function testRolloutAutoPausesOnFailureRateInPercent(): void
+    {
+        $id = $this->createReadyRelease('2.7.0', 27001);
+        $this->publish($id);
+        [, $ro] = $this->api($this->rm, 'GET', "api/v1/admin/releases/{$id}/rollout");
+        $this->assertSame(97.0, $ro['thresholds']['min_success_rate']);
+        $this->assertSame(5.0, $ro['thresholds']['max_failure_rate']);
+
+        // Percent thresholds round-trip; out-of-range values are rejected.
+        [$s] = $this->api($this->rm, 'PUT', "api/v1/admin/releases/{$id}/rollout", ['thresholds' => ['max_failure_rate' => 150]]);
+        $this->assertSame(422, $s);
+        [$s, $ro] = $this->api($this->rm, 'PUT', "api/v1/admin/releases/{$id}/rollout", ['thresholds' => ['max_failure_rate' => 10]]);
+        $this->assertSame(10.0, $ro['thresholds']['max_failure_rate'], json_encode($ro));
+
+        // 30 installs, 6 failed = 20 % > 10 % → auto-pause.
+        $rel = \App\Services\Catalog::release($id);
+        foreach ([['install_succeeded', 24], ['install_failed', 6]] as [$type, $n]) {
+            db_connect()->table('update_stats_hourly')->insert(['hour' => gmdate('Y-m-d H:00:00'), 'release_id' => $rel['id'], 'platform' => 'windows', 'type' => $type, 'error_code' => '', 'count' => $n]);
+        }
+        [, $dev] = $this->api($this->rm, 'GET', "api/v1/admin/releases/{$id}/devices");
+        $this->assertSame(80.0, (float) $dev['update_success_rate']);
+        $actions = (new \App\Services\RolloutService())->evaluateAll();
+        $this->assertStringContainsString('Install failure rate 20.0% above 10.0%', implode(' ', $actions));
+        [, $ro] = $this->api($this->rm, 'GET', "api/v1/admin/releases/{$id}/rollout");
+        $this->assertSame('PAUSED', $ro['status']);
     }
 }

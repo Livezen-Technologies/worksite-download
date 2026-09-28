@@ -310,7 +310,7 @@ class ReleaseService
             'checklist'                 => $checklist,
             'affected'                  => ['active_devices' => $devices, 'will_be_offered' => (int) round($devices * $firstPct / 100)],
             'health_ok'                 => (new HealthService())->publishBlockers() === [],
-            'requires_mfa'              => true,
+            'requires_mfa'              => $this->stepUpNeeded(),
             'scheduled_publish_at'      => Catalog::iso($release['scheduled_publish_at']),
         ];
     }
@@ -527,6 +527,23 @@ class ReleaseService
         UpdateResolverService::bumpCacheEpoch();
 
         return $release;
+    }
+
+    /**
+     * Mirrors BaseApiController::requireStepUp(): a fresh code is needed unless MFA was
+     * verified in the last 10 minutes; outside production, users without MFA are exempt.
+     */
+    public function stepUpNeeded(): bool
+    {
+        $ctx = $this->ctx();
+        if ($ctx->user === null) {
+            return config('UpdateCenter')->isProduction();
+        }
+        if ($ctx->hasRecentMfa()) {
+            return false;
+        }
+
+        return config('UpdateCenter')->isProduction() || ! empty($ctx->user['mfa_enabled']);
     }
 
     public function regenerateManifest(array $release, string $reason): array

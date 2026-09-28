@@ -183,8 +183,8 @@ export function ChannelsAdmin() {
                       />
                     </Td>
                   ))}
-                  <Td className="max-w-56 text-[12px]">{c.access_rule}</Td>
-                  <Td className="text-[12px]">{c.retention}</Td>
+                  <Td className="max-w-56 text-[12px]">{describeRule(c.access_rule)}</Td>
+                  <Td className="text-[12px]">{describeRule(c.retention)}</Td>
                 </tr>
               ))}
             </tbody>
@@ -193,4 +193,13 @@ export function ChannelsAdmin() {
       </Card>
     </>
   );
+}
+
+/** "audience: signed_in_beta · tpt: beta" for channel access / retention JSON. */
+function describeRule(rule: Record<string, unknown> | null | undefined): string {
+  if (!rule) return '—';
+  const parts = Object.entries(rule)
+    .filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0))
+    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
+  return parts.length ? parts.join(' · ') : '—';
 }

@@ -117,7 +117,7 @@ function ReportDetailPane({ reference }: { reference: string }) {
           <KeyValue
             rows={[
               ...Object.entries(r.context).map(([k, v]) => [titleCase(k), k === 'last_error' ? <Link className="link" to={`/admin/bugtrace/issues/${v}`}>{String(v)}</Link> : String(v)] as [string, React.ReactNode]),
-              ['Severity (user)', titleCase(r.severity)],
+              ...('severity' in r.context ? [] : ([['Severity (user)', titleCase(r.severity)]] as [string, string][])),
               ...(r.contact ? ([['Reporter email', r.contact.email]] as [string, string][]) : []),
             ]}
           />
@@ -348,24 +348,54 @@ export function ReleaseHealthPage() {
 
 // ---------------------------------------------------------------- Alerts CRUD
 
-const CONDITIONS = [
-  { value: 'new_issue_priority_high', label: 'New P0/P1 issue with users ≥' },
-  { value: 'crash_free_users_below', label: 'Crash-free users below (%)' },
-  { value: 'issue_regressed', label: 'Issue regressed' },
-  { value: 'update_failure_rate_above', label: 'Update install failures above (%)' },
-  { value: 'events_spike', label: 'Events spike (× baseline)' },
+type Threshold = Record<string, unknown>;
+
+/** Alert conditions and their parameters, as accepted by /admin/bugtrace/alerts (FR-BT-HLT-03). */
+const CONDITIONS: { value: string; label: string; params: { key: string; label: string; kind: 'number' | 'types' | 'priority' }[] }[] = [
+  { value: 'new_issue', label: 'New issue', params: [{ key: 'types', label: 'Issue types', kind: 'types' }, { key: 'min_priority', label: 'At least priority', kind: 'priority' }] },
+  { value: 'regression', label: 'Issue regressed', params: [{ key: 'types', label: 'Issue types', kind: 'types' }] },
+  { value: 'spike', label: 'Events spike (× hourly baseline)', params: [{ key: 'multiplier', label: 'Multiplier', kind: 'number' }, { key: 'min_events', label: 'Minimum events / hour', kind: 'number' }] },
+  { value: 'threshold', label: 'Issue reaches a threshold', params: [{ key: 'events', label: 'Events in an hour', kind: 'number' }, { key: 'users', label: 'Users affected', kind: 'number' }] },
+  { value: 'crash_free_below', label: 'Crash-free users below (%)', params: [{ key: 'value', label: 'Crash-free users %', kind: 'number' }] },
+  { value: 'resolved', label: 'Issue resolved', params: [] },
 ];
+const ISSUE_TYPES = ['crash', 'error', 'hang', 'message'];
+const CHANNEL_OPTIONS = [
+  { value: 'in_app', label: 'In-app' },
+  { value: 'email', label: 'Email' },
+  { value: 'webhook', label: 'Webhook (Chat / Slack)' },
+];
+
+/** Human summary of a threshold object, e.g. "types: crash, hang · min priority P1". */
+export function describeThreshold(t: unknown): string {
+  if (t === null || t === undefined) return '';
+  if (typeof t !== 'object') return String(t);
+  const parts = Object.entries(t as Threshold)
+    .filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0))
+    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${Array.isArray(v) ? v.join(', ') : String(v)}`);
+  return parts.join(' · ');
+}
 
 function AlertDialog({ alert, onClose }: { alert: BugAlert | null; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const [f, setF] = useState<Partial<BugAlert>>(alert ?? { name: '', condition: CONDITIONS[0].value, threshold: 100, window: '1h', channels: ['email'], enabled: true });
+  const [f, setF] = useState<Partial<BugAlert>>(alert ?? { name: '', condition: 'new_issue', threshold: { types: ['crash'] }, channels: ['in_app', 'email'], enabled: true, quiet_hours: null, digest: false, webhook_url: null });
+  const cond = CONDITIONS.find((c) => c.value === f.condition) ?? CONDITIONS[0];
+  const t = (typeof f.threshold === 'object' && f.threshold !== null ? f.threshold : {}) as Threshold;
+  const setT = (k: string, v: unknown) => setF({ ...f, threshold: { ...t, [k]: v } });
+  const payload = () => {
+    const allowed = new Set(cond.params.map((p) => p.key));
+    const clean: Threshold = {};
+    for (const [k, v] of Object.entries(t)) if (allowed.has(k) && v !== '' && v !== null && v !== undefined) clean[k] = v;
+    const { name, condition, channels, enabled, quiet_hours, digest, webhook_url } = f;
+    return { name, condition, channels, enabled, quiet_hours: quiet_hours || null, digest: !!digest, webhook_url: webhook_url || null, threshold: clean };
+  };
   const m = useMutation({
-    mutationFn: () => (alert ? bugtraceApi.updateAlert(alert.id, f) : bugtraceApi.createAlert(f)),
+    mutationFn: () => (alert ? bugtraceApi.updateAlert(alert.id, payload()) : bugtraceApi.createAlert(payload())),
     onSuccess: () => (toast.success('Alert saved'), void qc.invalidateQueries({ queryKey: bugKeys.alerts }), onClose()),
     onError: (e) => toast.error(errorMessage(e)),
   });
-  const ch = f.channels ?? [];
+  const ch = (f.channels ?? []) as string[];
   return (
     <Modal
       open
@@ -375,7 +405,7 @@ function AlertDialog({ alert, onClose }: { alert: BugAlert | null; onClose: () =
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={m.isPending} disabled={!f.name} onClick={() => m.mutate()}>
+          <Button variant="primary" loading={m.isPending} disabled={!f.name || ch.length === 0} onClick={() => m.mutate()}>
             Save alert
           </Button>
         </>
@@ -383,19 +413,35 @@ function AlertDialog({ alert, onClose }: { alert: BugAlert | null; onClose: () =
     >
       <div className="grid gap-3">
         <TextField label="Name" value={f.name ?? ''} onChange={(e) => setF({ ...f, name: e.target.value })} />
-        <Select label="Condition" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value })} options={CONDITIONS} />
-        <div className="grid grid-cols-2 gap-3">
-          <TextField label="Threshold" type="number" value={f.threshold ?? 0} onChange={(e) => setF({ ...f, threshold: Number(e.target.value) })} />
-          <Select label="Window" value={f.window} onChange={(e) => setF({ ...f, window: e.target.value })} options={['event', '1h', '6h', '24h'].map((w) => ({ value: w, label: w }))} />
-        </div>
+        <Select label="Condition" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value, threshold: {} })} options={CONDITIONS.map(({ value, label }) => ({ value, label }))} />
+        {cond.params.map((p) =>
+          p.kind === 'number' ? (
+            <TextField key={p.key} label={p.label} type="number" value={t[p.key] === undefined ? '' : String(t[p.key])} onChange={(e) => setT(p.key, e.target.value === '' ? '' : Number(e.target.value))} />
+          ) : p.kind === 'priority' ? (
+            <Select key={p.key} label={p.label} value={(t[p.key] as string) ?? ''} onChange={(e) => setT(p.key, e.target.value)} options={[{ value: '', label: 'Any' }, ...['P0', 'P1', 'P2', 'P3'].map((v) => ({ value: v, label: v }))]} />
+          ) : (
+            <fieldset key={p.key}>
+              <legend className="mb-1 text-[12px] font-semibold">{p.label}</legend>
+              <div className="flex flex-wrap gap-4">
+                {ISSUE_TYPES.map((ty) => {
+                  const cur = (t[p.key] as string[] | undefined) ?? [];
+                  return <Checkbox key={ty} label={titleCase(ty)} checked={cur.includes(ty)} onChange={(e) => setT(p.key, e.target.checked ? [...cur, ty] : cur.filter((x) => x !== ty))} />;
+                })}
+              </div>
+            </fieldset>
+          ),
+        )}
         <fieldset>
           <legend className="mb-1 text-[12px] font-semibold">Notify via</legend>
-          <div className="flex gap-4">
-            {['email', 'chat', 'webhook'].map((c) => (
-              <Checkbox key={c} label={titleCase(c)} checked={ch.includes(c)} onChange={(e) => setF({ ...f, channels: e.target.checked ? [...ch, c] : ch.filter((x) => x !== c) })} />
+          <div className="flex flex-wrap gap-4">
+            {CHANNEL_OPTIONS.map((c) => (
+              <Checkbox key={c.value} label={c.label} checked={ch.includes(c.value)} onChange={(e) => setF({ ...f, channels: e.target.checked ? [...ch, c.value] : ch.filter((x) => x !== c.value) })} />
             ))}
           </div>
         </fieldset>
+        {ch.includes('webhook') && <TextField label="Webhook URL" type="url" value={(f.webhook_url as string) ?? ''} onChange={(e) => setF({ ...f, webhook_url: e.target.value })} hint="WorkSuite Chat or Slack incoming webhook (https)." />}
+        <TextField label="Quiet hours" placeholder="22:00-07:00" value={(f.quiet_hours as string) ?? ''} onChange={(e) => setF({ ...f, quiet_hours: e.target.value })} hint="Asia/Colombo time; alerts are held and sent afterwards." />
+        <Checkbox label="Daily digest instead of immediate alerts" checked={!!f.digest} onChange={(e) => setF({ ...f, digest: e.target.checked })} />
         <Checkbox label="Enabled" checked={!!f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />
       </div>
     </Modal>
@@ -424,7 +470,7 @@ export function AlertsPage() {
               <tr>
                 <Th>Alert</Th>
                 <Th>Condition</Th>
-                <Th>Window</Th>
+                <Th>Delivery</Th>
                 <Th>Channels</Th>
                 <Th>Enabled</Th>
                 <Th />
@@ -435,10 +481,11 @@ export function AlertsPage() {
                 <tr key={a.id}>
                   <Td className="font-semibold">{a.name}</Td>
                   <Td className="text-[12px]">
-                    {CONDITIONS.find((c) => c.value === a.condition)?.label ?? a.condition} <span className="font-mono">{a.threshold}</span>
+                    {CONDITIONS.find((c) => c.value === a.condition)?.label ?? a.condition}
+                    {describeThreshold(a.threshold) && <span className="block font-mono text-[11px] text-muted">{describeThreshold(a.threshold)}</span>}
                   </Td>
-                  <Td>{a.window}</Td>
-                  <Td>{a.channels.join(', ')}</Td>
+                  <Td className="text-[12px]">{[a.digest ? 'Daily digest' : 'Immediate', a.quiet_hours ? `quiet ${String(a.quiet_hours)}` : null].filter(Boolean).join(' · ')}</Td>
+                  <Td>{a.channels.map((c) => CHANNEL_OPTIONS.find((o) => o.value === c)?.label ?? c).join(', ')}</Td>
                   <Td>
                     <input type="checkbox" className="size-4 accent-brand" aria-label={`Enable ${a.name}`} checked={a.enabled} onChange={() => toggle.mutate(a)} />
                   </Td>

@@ -132,7 +132,9 @@ export function createTusUpload(opts: TusUploadOptions): TusController {
     storeFingerprintForResuming: true,
     removeFingerprintOnSuccess: true,
     fingerprint: async () => pending.fingerprint,
-    httpStack: customHttpStack,
+    // Only override when mock mode installed a stack: an explicit `undefined` would replace
+    // tus-js-client's default XHR stack (options are merged with a spread).
+    ...(customHttpStack ? { httpStack: customHttpStack } : {}),
     onBeforeRequest(req) {
       const method = req.getMethod();
       if (method !== 'GET' && method !== 'HEAD') {

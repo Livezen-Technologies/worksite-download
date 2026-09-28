@@ -387,8 +387,8 @@ export interface AdminChannel {
   is_default: boolean;
   allow_direct_download: boolean;
   allow_auto_update: boolean;
-  access_rule: string;
-  retention: string;
+  access_rule: Record<string, unknown> | null;
+  retention: Record<string, unknown> | null;
 }
 
 // ---------------------------------------------------------------- releases
@@ -447,7 +447,7 @@ export interface Checklist {
 
 /** Assumption: the contract does not spell out Approval; this is the shape the UI reads. */
 export interface Approval {
-  kind: 'QA' | 'RELEASE_MANAGER' | string;
+  kind: 'QA' | 'RELEASE' | string;
   decision: 'PASS' | 'FAIL' | 'APPROVED' | string;
   platform: Platform | null;
   user: string;
@@ -971,11 +971,15 @@ export interface ReleaseHealth {
 export interface BugAlert {
   id: string;
   name: string;
+  /** new_issue | regression | spike | threshold | crash_free_below | resolved */
   condition: string;
-  threshold: number;
-  window: string;
+  /** Condition parameters, e.g. {types:['crash']}, {multiplier:5, min_events:20}, {value:99} */
+  threshold: Record<string, unknown>;
   channels: string[];
   enabled: boolean;
+  quiet_hours?: string | null;
+  digest?: boolean;
+  webhook_url?: string | null;
   project?: string | null;
   [key: string]: unknown;
 }

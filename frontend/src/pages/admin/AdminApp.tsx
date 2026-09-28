@@ -13,7 +13,7 @@ import * as P from './pages';
 const ReleaseScreen = lazy(() => import('@/modules/releases/ReleaseScreen'));
 
 function RequireStaff({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, environment } = useAuth();
   const loc = useLocation();
   if (loading) return <Spinner label="Checking your session…" />;
   if (!user) return <Navigate to={`/admin/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
@@ -23,7 +23,10 @@ function RequireStaff({ children }: { children: ReactNode }) {
         <Alert tone="warn">This is a customer account. The admin portal is for Livezen staff. Go to <a className="link" href="/portal">your portal</a>.</Alert>
       </div>
     );
-  if (!user.mfa_enabled && user.passkeys === 0 && !loc.pathname.startsWith('/admin/account/security')) return <Navigate to="/admin/account/security?required=1" replace />;
+  // MFA is mandatory for staff in production (FR-UC-AUTH-02); the API enforces it too
+  // (403 MFA_ENROLLMENT_REQUIRED), so other environments only nudge via the header link.
+  const mfaMissing = !user.mfa_enabled && user.passkeys === 0;
+  if (mfaMissing && environment === 'PRODUCTION' && !loc.pathname.startsWith('/admin/account/security')) return <Navigate to="/admin/account/security?required=1" replace />;
   return <>{children}</>;
 }
 
