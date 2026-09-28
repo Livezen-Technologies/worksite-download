@@ -5,6 +5,7 @@
 // Public catalog API (§10.1).
 $routes->group('api/v1', ['namespace' => 'App\Controllers\PublicSite', 'filter' => ['auth:optional', 'rl:public']], static function ($routes) {
     $routes->get('site', 'CatalogController::site');
+    $routes->get('version', 'CatalogController::version');
     $routes->get('apps', 'CatalogController::apps');
     $routes->get('apps/(:segment)/releases/(:segment)', 'CatalogController::release/$1/$2');
     $routes->get('apps/(:segment)/releases', 'CatalogController::releases/$1');

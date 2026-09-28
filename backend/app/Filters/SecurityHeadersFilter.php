@@ -20,6 +20,7 @@ class SecurityHeadersFilter implements FilterInterface
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
     {
         $response->setHeader('X-Content-Type-Options', 'nosniff');
+        $response->setHeader('X-Update-Center-Version', \App\Libraries\AppVersion::current());
         $response->setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->setHeader('X-Frame-Options', 'DENY');
         $response->setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');

@@ -105,6 +105,6 @@ class DashboardController extends BaseApiController
     {
         $c = (new HealthService())->run();
 
-        return ['ok' => ! in_array('DOWN', array_column($c, 'status'), true), 'environment' => config('UpdateCenter')->environmentName, 'components' => $c, 'queue' => Queue::stats()];
+        return ['ok' => ! in_array('DOWN', array_column($c, 'status'), true), 'environment' => config('UpdateCenter')->environmentName, 'version' => \App\Libraries\AppVersion::info(), 'components' => $c, 'queue' => Queue::stats()];
     }
 }

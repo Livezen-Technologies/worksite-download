@@ -15,7 +15,7 @@ class HealthService
     public function run(bool $persist = true): array
     {
         $out   = [];
-        $out[] = $this->timed('api', static fn () => [true, 'PHP ' . PHP_VERSION . ' · CodeIgniter ' . \CodeIgniter\CodeIgniter::CI_VERSION]);
+        $out[] = $this->timed('api', static fn () => [true, 'Update Center ' . \App\Libraries\AppVersion::current() . ' · PHP ' . PHP_VERSION . ' · CodeIgniter ' . \CodeIgniter\CodeIgniter::CI_VERSION]);
         $out[] = $this->timed('database', static function () {
             $db = db_connect();
             $db->query('SELECT 1');

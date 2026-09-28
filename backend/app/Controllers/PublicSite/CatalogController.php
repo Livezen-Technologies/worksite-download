@@ -26,7 +26,13 @@ class CatalogController extends BaseApiController
 
     public function site()
     {
-        return $this->cached(['environment' => config('UpdateCenter')->environmentName, 'name' => 'WorkSuite Downloads', 'apps' => $this->svc()->apps()]);
+        return $this->cached(['environment' => config('UpdateCenter')->environmentName, 'name' => 'WorkSuite Downloads', 'version' => \App\Libraries\AppVersion::current(), 'apps' => $this->svc()->apps()]);
+    }
+
+    /** Update Center build information (not the versions of distributed apps). */
+    public function version()
+    {
+        return $this->cached(\App\Libraries\AppVersion::info() + ['environment' => config('UpdateCenter')->environmentName], 300);
     }
 
     public function apps()
