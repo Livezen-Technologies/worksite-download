@@ -12,7 +12,8 @@
     "require": {
         "php": "^8.2",
         "codeigniter4/framework": "^4.7",
-        "lbuchs/webauthn": "^2.2"
+        "lbuchs/webauthn": "^2.2",
+        "league/commonmark": "^2.5"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9",

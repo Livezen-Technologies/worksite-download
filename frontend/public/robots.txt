@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /portal/
+Disallow: /api/
+Sitemap: https://updates.worksuitecloud.com/sitemap.xml

@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-navy: #0f1b3d;
+  --color-navy-700: #18264f;
+  --color-navy-600: #22325f;
+  --color-indigo: #23349e;
+  --color-indigo-700: #1b2980;
+  --color-brand: #3b5bdb;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-ground: #f4f5f9;
+  --color-line: #e3e6ef;
+  --color-ink: #141a33;
+  --color-muted: #5b6480;
+  --color-subtle: #6b7390;
+
+  --color-ok: #137333;
+  --color-ok-bg: #e6f4ea;
+  --color-warn: #8a5300;
+  --color-warn-bg: #fff4e0;
+  --color-bad: #b42318;
+  --color-bad-bg: #fdecea;
+  --color-info: #23349e;
+  --color-info-bg: #e8edff;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-ground font-sans text-ink antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  a {
+    color: inherit;
+  }
+  code,
+  kbd,
+  samp,
+  .mono {
+    font-family: var(--font-mono);
+    font-feature-settings: 'zero' 1;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-line bg-white;
+  }
+  .link {
+    @apply text-brand underline underline-offset-2 hover:text-indigo;
+  }
+  .label-caps {
+    @apply text-[11px] font-semibold tracking-[0.08em] text-subtle uppercase;
+  }
+  .prose-uc {
+    @apply text-[14px] leading-relaxed text-ink;
+  }
+  .prose-uc h2,
+  .prose-uc h3 {
+    @apply mt-4 mb-1.5 text-[14px] font-bold;
+  }
+  .prose-uc ul {
+    @apply my-1.5 list-disc space-y-1 pl-5;
+  }
+  .prose-uc ol {
+    @apply my-1.5 list-decimal space-y-1 pl-5;
+  }
+  .prose-uc p {
+    @apply my-2;
+  }
+  .prose-uc code {
+    @apply rounded bg-ground px-1 py-0.5 text-[12.5px];
+  }
+  .prose-uc a {
+    @apply text-brand underline;
+  }
+  .sr-only-focusable:not(:focus) {
+    @apply sr-only;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
