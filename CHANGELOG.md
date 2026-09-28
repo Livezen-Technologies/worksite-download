@@ -79,6 +79,12 @@ B1 Bug Trace core).
   SigV4 presigning and HMAC-signed CDN URLs, copy-and-verify storage
   migration, component health checks, DB job queue, hash-chained append-only
   audit log with verification and CSV export, in-app/email notifications.
+- **Deployment** — Docker images for update-web / update-api / update-worker /
+  update-scheduler / signing-service, compose stack (MariaDB, Redis, optional
+  ClamAV), nginx site with CSP/HSTS and prerender fallback, mTLS front for the
+  signing service, Cloudflare Worker validating signed CDN URLs, OpenAPI 3.1
+  at `/api-docs`, GitHub Actions CI, and `uc:worker`, `uc:scheduler`,
+  `uc:health`, `uc:keys`, `uc:demo` spark commands.
 - **Versioning** — `/VERSION`, `scripts/version.php` (show / bump / set /
   sync / check), version exposed at `GET /api/v1/version`, in `/api/v1/site`,
   admin health and the `X-Update-Center-Version` header.
