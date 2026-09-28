@@ -2,5 +2,16 @@
 
 use CodeIgniter\Router\RouteCollection;
 
-/** @var RouteCollection $routes */
-$routes->get('/', 'Home::index');
+/**
+ * @var RouteCollection $routes
+ *
+ * Route groups live in app/Config/Routes/*.php so modules stay independent.
+ */
+$routes->setAutoRoute(false);
+
+foreach (['public', 'auth', 'desktop', 'admin', 'portal', 'server', 'bugtrace'] as $group) {
+    $file = __DIR__ . '/Routes/' . $group . '.php';
+    if (is_file($file)) {
+        require $file;
+    }
+}
