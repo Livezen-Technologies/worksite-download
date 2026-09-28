@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version & changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: "8.4", coverage: none }
+      - run: php scripts/version.php check
+
+  backend:
+    name: Backend (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ["8.2", "8.4"]
+    defaults:
+      run: { working-directory: backend }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: intl, mbstring, sodium, sqlite3, zip, curl
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - name: Lint
+        run: find app signing tests -name '*.php' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+      - name: Tests (SQLite)
+        run: vendor/bin/phpunit --no-coverage
+      - name: Dependency audit
+        run: composer audit --no-dev
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: frontend }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  sdk:
+    name: Bug Trace web SDK
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: sdks/bugtrace-web }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci || npm install
+      - run: npm test
+      - run: npm run build

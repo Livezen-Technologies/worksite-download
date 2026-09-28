@@ -1,0 +1,86 @@
+# Local / staging stack for WorkSuite Update Center (§3.5, §13.2).
+# Production uses the same images behind Cloudflare with managed MariaDB/Redis and R2.
+name: update-center
+
+x-api-env: &api-env
+  CI_ENVIRONMENT: ${CI_ENVIRONMENT:-development}
+  app.baseURL: ${UC_BASE_URL:-http://localhost:8088/}
+  database.default.hostname: mariadb
+  database.default.database: update_center
+  database.default.username: update_center
+  database.default.password: ${DB_PASSWORD:-update_center_dev}
+  database.default.DBDriver: MySQLi
+  redis.host: redis
+  updatecenter.environmentName: ${UC_ENVIRONMENT:-DEV}
+  updatecenter.publicBaseUrl: ${UC_BASE_URL:-http://localhost:8088}
+  updatecenter.cdnHost: ${UC_CDN_HOST:-http://localhost:8088/_dev-cdn}
+  updatecenter.signingDriver: remote
+  updatecenter.signingServiceUrl: http://signing-service:8080
+  updatecenter.scanner: ${UC_SCANNER:-none}
+  updatecenter.clamavSocket: tcp://clamav:3310
+  encryption.key: ${UC_ENCRYPTION_KEY:-hex2bin:3f1c9a7e2b5d4c6f8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f}
+  UC_APP_SECRET: ${UC_APP_SECRET:-dev-only-app-secret}
+  UC_CDN_SECRET: ${UC_CDN_SECRET:-dev-only-cdn-secret}
+
+services:
+  update-web:
+    build: { context: ., dockerfile: docker/web.Dockerfile }
+    ports: ["8088:80"]
+    depends_on: [update-api]
+
+  update-api:
+    build: { context: ., dockerfile: docker/api.Dockerfile, target: base }
+    environment: *api-env
+    volumes: ["storage:/srv/update-center/backend/writable/storage", "uploads:/srv/update-center/backend/writable/uploads"]
+    depends_on: [mariadb, redis, signing-service]
+
+  update-worker:
+    build: { context: ., dockerfile: docker/api.Dockerfile, target: worker }
+    environment: *api-env
+    volumes: ["storage:/srv/update-center/backend/writable/storage", "uploads:/srv/update-center/backend/writable/uploads"]
+    depends_on: [update-api]
+
+  update-scheduler:
+    build: { context: ., dockerfile: docker/api.Dockerfile, target: base }
+    command: ["php", "spark", "uc:scheduler", "--loop"]
+    environment: *api-env
+    depends_on: [update-api]
+
+  signing-service:
+    build: { context: ., dockerfile: docker/api.Dockerfile, target: base }
+    command: ["php", "-S", "0.0.0.0:8080", "signing/index.php"]
+    environment:
+      SIGNING_KEY_PROVIDER: file
+      SIGNING_KEY_FILE: /run/secrets/release_key
+      SIGNING_RELEASE_KEY_ID: ws-release-dev
+      REQUIRE_ATTESTATION: ${REQUIRE_ATTESTATION:-0}
+      REQUIRE_APPROVALS: "1"
+      CI_ATTESTATION_KEYS: ${CI_ATTESTATION_KEYS:-{}}
+    secrets: [release_key]
+    networks: [default]          # internal only: no published ports
+
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: update_center
+      MARIADB_USER: update_center
+      MARIADB_PASSWORD: ${DB_PASSWORD:-update_center_dev}
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    volumes: ["mariadb:/var/lib/mysql"]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ["scan"]
+
+volumes:
+  mariadb: {}
+  storage: {}
+  uploads: {}
+
+secrets:
+  release_key:
+    file: ./docker/dev-secrets/release_key   # generate: php -r 'echo base64_encode(sodium_crypto_sign_secretkey(sodium_crypto_sign_keypair()));' > docker/dev-secrets/release_key

@@ -1,0 +1,318 @@
+openapi: 3.1.0
+info:
+  title: WorkSuite Update Center API
+  version: 0.1.0
+  description: |
+    Release distribution, signed manifests, Desktop Update API, telemetry, server
+    edition updates and administration for updates.worksuitecloud.com
+    (WS-UPDATE-CENTER-SRS-001 §10, §17.10, §18.12).
+
+    Errors always use `{ "error": { "code", "message", "details" } }` (§10.8).
+    Signed documents (manifests, update responses) carry `key_id` + `signature`:
+    Ed25519 over the canonical JSON (sorted keys, no whitespace) of the object
+    without `signature`.
+servers:
+  - url: https://updates.worksuitecloud.com
+  - url: https://updates-staging.worksuitecloud.com
+tags:
+  - name: Public
+  - name: Desktop
+  - name: Tenant
+  - name: Server
+  - name: Auth
+  - name: Admin
+  - name: CI
+components:
+  securitySchemes:
+    session: { type: apiKey, in: cookie, name: uc_session, description: "Staff/portal session. Non-GET requests also need X-CSRF-Token." }
+    apiClient: { type: http, scheme: bearer, description: "`<client_id>.<secret>` for CI / tenant API clients." }
+    tenantPolicy: { type: apiKey, in: header, name: X-WorkSuite-Tenant-Policy, description: "Tenant Policy Token (base64url JSON, §2.4)." }
+    license: { type: apiKey, in: header, name: Authorization, description: "`License <token>` — installation/device license token (never raw keys)." }
+  parameters:
+    mfa: { name: X-MFA-Token, in: header, required: false, schema: { type: string }, description: "TOTP or recovery code for step-up MFA (critical actions)." }
+    releaseId: { name: id, in: path, required: true, schema: { type: string, example: rel_01J8ZK3M4N5P6Q7R8S9T0V1W2X } }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [APP_NOT_FOUND, RELEASE_NOT_AVAILABLE, VERSION_UNSUPPORTED, CHANNEL_FORBIDDEN, TENANT_POLICY_INVALID, LICENSE_TOKEN_INVALID, DISTRIBUTION_DEGRADED, CHECKLIST_FAILED, SIGNING_REFUSED, SOD_VIOLATION, MFA_REQUIRED, RATE_LIMITED, INVALID_TRANSITION, UPLOAD_REJECTED, VALIDATION_FAILED, UNAUTHENTICATED, FORBIDDEN] }
+            message: { type: string }
+            details: { type: object }
+    UpdateResponse:
+      type: object
+      required: [status, app_id, channel, current_version, tenant_policy, issued_at, expires_at, key_id, signature]
+      properties:
+        status: { type: string, enum: [CURRENT, UPDATE_AVAILABLE, UPDATE_RECOMMENDED, UPDATE_REQUIRED, UNSUPPORTED, RELEASE_WITHDRAWN] }
+        app_id: { type: string, example: lk.worksuite.desktop }
+        channel: { type: string, example: stable }
+        current_version: { type: string }
+        latest_version: { type: [string, "null"] }
+        build: { type: [integer, "null"] }
+        release_id: { type: [string, "null"] }
+        release_type: { type: [string, "null"], enum: [OPTIONAL, RECOMMENDED, MANDATORY, CRITICAL, null] }
+        mandatory: { type: boolean }
+        mandatory_after: { type: [string, "null"], format: date-time }
+        grace_minutes: { type: [integer, "null"] }
+        minimum_supported_version: { type: [string, "null"] }
+        effective_minimum: { type: [string, "null"] }
+        rollout: { type: object, properties: { stage: { type: [integer, "null"] }, percentage: { type: integer }, in_cohort: { type: boolean } } }
+        supersedes: { type: array, items: { type: string } }
+        release_notes_url: { type: [string, "null"] }
+        highlights: { type: array, items: { type: string } }
+        package:
+          type: [object, "null"]
+          properties:
+            id: { type: string }
+            revision_id: { type: string }
+            type: { type: string }
+            size: { type: integer }
+            sha256: { type: string }
+            min_os: { type: [string, "null"] }
+            signer: { type: string }
+            file_name: { type: string }
+            download_url: { type: string, description: "Short-lived (15 min) CDN URL" }
+            download_grant: { type: string, description: "Exchange at POST /api/v1/downloads/grant after expiry" }
+            expires_at: { type: string, format: date-time }
+        release_manifest_url: { type: [string, "null"] }
+        message: { type: [string, "null"] }
+        tenant_policy: { type: string, enum: [applied, absent, invalid] }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        key_id: { type: string, example: ws-uc-resp-2026a }
+        signature: { type: string }
+    ChannelManifest:
+      type: object
+      properties:
+        schema: { const: 2 }
+        type: { const: channel }
+        app: { type: string }
+        channel: { type: string }
+        generated_at: { type: string, format: date-time }
+        minimum_supported_version: { type: [string, "null"] }
+        current:
+          type: [object, "null"]
+          properties:
+            version: { type: string }
+            build: { type: integer }
+            release_id: { type: string }
+            release_type: { type: string }
+            mandatory: { type: boolean }
+            mandatory_after: { type: [string, "null"] }
+            published_at: { type: string }
+            release_manifest_sha256: { type: string }
+            platforms: { type: object, additionalProperties: { type: array, items: { type: string } } }
+        withdrawn: { type: array, items: { type: string } }
+        blocked_versions: { type: array, items: { type: string } }
+        key_id: { type: string }
+        signature: { type: string }
+    UpdateEvent:
+      type: object
+      required: [event_id, type, app_id, device_ref]
+      properties:
+        event_id: { type: string }
+        type: { type: string, enum: [update_checked, download_started, download_completed, install_started, install_succeeded, install_failed, rolled_back] }
+        app_id: { type: string }
+        device_ref: { type: string, example: "hmac:6f1c…" }
+        tenant: { type: string }
+        from: { type: string }
+        to: { type: string }
+        platform: { type: string }
+        arch: { type: string }
+        channel: { type: string }
+        error_code: { type: string }
+        at: { type: string, format: date-time }
+    Attestation:
+      type: object
+      required: [payload, signature, key_id]
+      properties:
+        payload:
+          type: object
+          properties:
+            app_id: { type: string }
+            version: { type: string }
+            build: { type: integer }
+            files: { type: array, items: { type: object, properties: { name: { type: string }, sha256: { type: string }, size: { type: integer } } } }
+            pipeline: { type: string }
+            commit: { type: string }
+        signature: { type: string, description: "base64url Ed25519 over canonical JSON of payload (CI attestation key)" }
+        key_id: { type: string }
+  responses:
+    Error: { description: Error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+paths:
+  /api/v1/site:
+    get: { tags: [Public], summary: Site data (environment, version, public apps), responses: { "200": { description: OK } } }
+  /api/v1/version:
+    get: { tags: [Public], summary: Update Center version/build, responses: { "200": { description: OK } } }
+  /api/v1/apps:
+    get: { tags: [Public], summary: Public applications, responses: { "200": { description: OK } } }
+  /api/v1/apps/{slug}:
+    get:
+      tags: [Public]
+      summary: Application page data (latest stable, packages, download page content)
+      parameters: [{ name: slug, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/apps/{slug}/releases:
+    get:
+      tags: [Public]
+      parameters: [{ name: slug, in: path, required: true, schema: { type: string } }, { name: channel, in: query, schema: { type: string } }]
+      responses: { "200": { description: OK } }
+  /api/v1/apps/{slug}/releases/{version}:
+    get:
+      tags: [Public]
+      summary: Release detail with changelog, packages, checksums, previous versions
+      parameters: [{ name: slug, in: path, required: true, schema: { type: string } }, { name: version, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/apps/{app}/channels/{channel}/manifest:
+    get:
+      tags: [Desktop]
+      summary: Signed channel manifest
+      security: [{}, { tenantPolicy: [] }]
+      parameters: [{ name: app, in: path, required: true, schema: { type: string } }, { name: channel, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ChannelManifest" } } } }, "403": { $ref: "#/components/responses/Error" } }
+  /api/v1/releases/{id}/manifest:
+    get: { tags: [Desktop], summary: Signed release manifest, parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: OK } } }
+  /api/v1/releases/{id}/state:
+    get: { tags: [Desktop], summary: Release state for revalidation before install, parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: OK } } }
+  /api/v1/desktop/update:
+    get:
+      tags: [Desktop]
+      summary: Update decision (§10.3)
+      security: [{}, { tenantPolicy: [] }, { tenantPolicy: [], license: [] }]
+      parameters:
+        - { name: app_id, in: query, required: true, schema: { type: string, example: lk.worksuite.desktop } }
+        - { name: current_version, in: query, required: true, schema: { type: string } }
+        - { name: build, in: query, schema: { type: integer } }
+        - { name: platform, in: query, required: true, schema: { type: string, enum: [windows, macos, linux] } }
+        - { name: architecture, in: query, required: true, schema: { type: string, enum: [x64, arm64] } }
+        - { name: install_type, in: query, schema: { type: string, enum: [exe, msi, dmg, pkg, zip, appimage, deb, rpm] } }
+        - { name: channel, in: query, schema: { type: string }, description: "Hint — the TPT wins" }
+        - { name: device_id, in: query, schema: { type: string }, description: "Pseudonymous device_ref only" }
+        - { name: os_version, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Signed update response, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateResponse" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/v1/downloads/grant:
+    post:
+      tags: [Desktop]
+      summary: Exchange a download grant for a fresh CDN URL
+      requestBody: { content: { application/json: { schema: { type: object, properties: { grant: { type: string } } } } } }
+      responses: { "200": { description: OK }, "401": { $ref: "#/components/responses/Error" }, "410": { $ref: "#/components/responses/Error" } }
+  /api/v1/update-events:
+    post:
+      tags: [Desktop]
+      summary: Telemetry batch (idempotent by event_id, ≤ 100)
+      requestBody: { content: { application/json: { schema: { type: object, properties: { events: { type: array, items: { $ref: "#/components/schemas/UpdateEvent" } } } } } } }
+      responses: { "202": { description: Accepted } }
+  /api/v1/device-versions:
+    post: { tags: [Desktop], summary: Heartbeat, responses: { "202": { description: Accepted } } }
+  /api/v1/catalog/changes:
+    get:
+      tags: [Tenant]
+      summary: Catalog change feed with signed manifests (§2.5)
+      security: [{ apiClient: [] }]
+      parameters: [{ name: since, in: query, schema: { type: integer } }, { name: limit, in: query, schema: { type: integer } }]
+      responses: { "200": { description: OK } }
+  /api/v1/keys:
+    get: { tags: [Public], summary: Release/response public keys and rotation documents, responses: { "200": { description: OK } } }
+  /download/{path}:
+    get:
+      tags: [Public]
+      summary: Download resolver — 302 to a short-lived CDN URL (never streams bytes)
+      parameters: [{ name: path, in: path, required: true, schema: { type: string }, example: desktop/windows/x64 }]
+      responses: { "302": { description: Redirect to CDN }, "404": { description: HTML error page }, "410": { description: Version unsupported }, "503": { description: Distribution degraded } }
+  /api/v1/server/update:
+    get:
+      tags: [Server]
+      summary: Server update status + edition package + upgrade chain (§17.10)
+      security: [{ license: [] }]
+      parameters:
+        - { name: version, in: query, schema: { type: string } }
+        - { name: build, in: query, schema: { type: integer } }
+        - { name: edition, in: query, schema: { type: string, enum: [free, business, enterprise] } }
+        - { name: channel, in: query, schema: { type: string } }
+      responses: { "200": { description: Signed server update response }, "401": { $ref: "#/components/responses/Error" } }
+  /api/v1/server/downloads/grant:
+    post: { tags: [Server], security: [{ license: [] }], responses: { "200": { description: OK } } }
+  /api/v1/server/installations/report:
+    post: { tags: [Server], security: [{ license: [] }], summary: Installation heartbeat (no business data), responses: { "200": { description: OK } } }
+  /api/v1/server/update-events:
+    post: { tags: [Server], security: [{ license: [] }], summary: started / completed / failed(step) / rolled_back, responses: { "202": { description: Accepted } } }
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { email: { type: string }, password: { type: string } } } } } }
+      responses: { "200": { description: "Session cookie set; mfa_required tells whether /auth/mfa or passkey is needed" }, "401": { $ref: "#/components/responses/Error" } }
+  /api/v1/auth/mfa:
+    post: { tags: [Auth], security: [{ session: [] }], responses: { "200": { description: OK } } }
+  /api/v1/auth/me:
+    get: { tags: [Auth], security: [{ session: [] }], responses: { "200": { description: OK } } }
+  /api/v1/admin/releases:
+    get: { tags: [Admin], security: [{ session: [] }, { apiClient: [] }], summary: List releases (release.view), responses: { "200": { description: OK } } }
+    post:
+      tags: [Admin, CI]
+      security: [{ session: [] }, { apiClient: [] }]
+      summary: Create a DRAFT release (idempotent for CI on app+channel+version+build)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app_id, version, build]
+              properties:
+                app_id: { type: string, example: lk.worksuite.desktop }
+                version: { type: string }
+                build: { type: integer }
+                channel: { type: string, default: STABLE }
+                release_type: { type: string, enum: [OPTIONAL, RECOMMENDED, MANDATORY, CRITICAL] }
+                minimum_supported_version: { type: string }
+                mandatory_after: { type: string, format: date-time }
+      responses: { "201": { description: Created }, "409": { $ref: "#/components/responses/Error" }, "422": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/releases/{id}:
+    get: { tags: [Admin], security: [{ session: [] }, { apiClient: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: Full release incl. packages, checklist, rollout, manifest, allowed_actions } } }
+  /api/v1/admin/releases/{id}/packages:
+    post:
+      tags: [Admin, CI]
+      security: [{ session: [] }, { apiClient: [] }]
+      summary: Register an upload (tus or presigned multipart) for a package slot
+      parameters: [{ $ref: "#/components/parameters/releaseId" }]
+      responses: { "201": { description: "package + upload session (tus endpoint or presigned part URLs)" } }
+  /api/v1/admin/releases/{id}/packages/{pkg}/complete:
+    post: { tags: [CI], security: [{ apiClient: [] }], summary: Complete a presigned multipart upload, parameters: [{ $ref: "#/components/parameters/releaseId" }, { name: pkg, in: path, required: true, schema: { type: string } }], responses: { "200": { description: OK } } }
+  /api/v1/admin/releases/{id}/attestation:
+    post:
+      tags: [CI]
+      security: [{ apiClient: [] }]
+      parameters: [{ $ref: "#/components/parameters/releaseId" }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Attestation" } } } }
+      responses: { "200": { description: Verified }, "422": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/releases/{id}/changelog:
+    put: { tags: [Admin, CI], security: [{ session: [] }, { apiClient: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: OK } } }
+  /api/v1/admin/releases/{id}/submit-test:
+    post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: READY_FOR_TEST }, "422": { $ref: "#/components/responses/Error" } } }
+  /api/v1/admin/releases/{id}/qa:
+    post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Error" } } }
+  /api/v1/admin/releases/{id}/approve:
+    post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: APPROVED } } }
+  /api/v1/admin/releases/{id}/publish:
+    post:
+      tags: [Admin]
+      security: [{ session: [] }]
+      parameters: [{ $ref: "#/components/parameters/releaseId" }, { $ref: "#/components/parameters/mfa" }]
+      responses: { "200": { description: PUBLISHED }, "401": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" }, "422": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/releases/{id}/withdraw:
+    post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }, { $ref: "#/components/parameters/mfa" }], responses: { "200": { description: WITHDRAWN } } }
+  /api/v1/admin/releases/{id}/rollout/{action}:
+    post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }, { name: action, in: path, required: true, schema: { type: string, enum: [pause, resume, increase, complete] } }, { $ref: "#/components/parameters/mfa" }], responses: { "200": { description: OK } } }
+  /api/v1/uploads/tus/{id}:
+    patch:
+      tags: [Admin, CI]
+      summary: tus 1.0 chunk upload (8 MB)
+      security: [{ session: [] }, { apiClient: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }, { name: Upload-Offset, in: header, required: true, schema: { type: integer } }, { name: Tus-Resumable, in: header, required: true, schema: { const: 1.0.0 } }]
+      requestBody: { content: { application/offset+octet-stream: { schema: { type: string, format: binary } } } }
+      responses: { "204": { description: Chunk stored; Upload-Offset header } }
