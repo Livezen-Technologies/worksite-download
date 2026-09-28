@@ -1,0 +1,186 @@
+import { api, buildUrl, type Query } from './api';
+import type {
+  AdminApp,
+  AdminChannel,
+  AdminNotification,
+  AdminPackage,
+  AdminRelease,
+  AdminReleaseDetail,
+  AdminUser,
+  ApiClient,
+  AppPlatform,
+  AuditEntry,
+  Campaign,
+  CampaignBody,
+  Changelog,
+  ChangelogSections,
+  Checklist,
+  CreateAppBody,
+  CreatePackageBody,
+  CreatePackageResponse,
+  CreateReleaseBody,
+  Dashboard,
+  DeviceAnalytics,
+  DownloadAnalytics,
+  DownloadPageAdmin,
+  DownloadPageDraftBody,
+  HealthReport,
+  Installation,
+  InstallationStats,
+  ListResponse,
+  ManifestInfo,
+  MinimumImpact,
+  MinimumVersionsResponse,
+  PolicyBody,
+  Platform,
+  PublishSummary,
+  ReleaseDevices,
+  ReleaseDownloads,
+  ReleaseListResponse,
+  ReleasePreview,
+  RolesMatrix,
+  Rollout,
+  ServerMeta,
+  Settings,
+  SigningKey,
+  StorageOverview,
+  SupportState,
+  UpdateStatusAnalytics,
+} from '@/types/api';
+
+const A = '/admin';
+const rel = (id: string) => `${A}/releases/${encodeURIComponent(id)}`;
+
+export type ReleaseFilters = { status?: string; app?: string; channel?: string; platform?: string; q?: string; limit?: number; offset?: number };
+
+export const adminKeys = {
+  dashboard: ['admin', 'dashboard'] as const,
+  notifications: ['admin', 'notifications'] as const,
+  health: ['admin', 'health'] as const,
+  apps: ['admin', 'apps'] as const,
+  app: (id: string) => ['admin', 'app', id] as const,
+  minimums: (id: string) => ['admin', 'app', id, 'minimums'] as const,
+  downloadPage: (id: string) => ['admin', 'app', id, 'download-page'] as const,
+  channels: ['admin', 'channels'] as const,
+  platforms: ['admin', 'platforms'] as const,
+  releases: (f: ReleaseFilters) => ['admin', 'releases', f] as const,
+  release: (id: string) => ['admin', 'release', id] as const,
+  releaseSub: (id: string, sub: string, extra?: unknown) => ['admin', 'release', id, sub, extra] as const,
+  pkg: (releaseId: string, pkgId: string) => ['admin', 'release', releaseId, 'pkg', pkgId] as const,
+  installations: (f: Query) => ['admin', 'installations', f] as const,
+  installationStats: ['admin', 'installations', 'stats'] as const,
+  analytics: (kind: string, f: Query) => ['admin', 'analytics', kind, f] as const,
+  users: ['admin', 'users'] as const,
+  roles: ['admin', 'roles'] as const,
+  apiClients: ['admin', 'api-clients'] as const,
+  storage: ['admin', 'storage'] as const,
+  signingKeys: ['admin', 'signing-keys'] as const,
+  audit: (f: Query) => ['admin', 'audit', f] as const,
+  settings: ['admin', 'settings'] as const,
+};
+
+export const adminApi = {
+  // shell
+  dashboard: () => api.get<Dashboard>(`${A}/dashboard`),
+  notifications: () => api.get<{ data: AdminNotification[]; unread: number }>(`${A}/notifications`),
+  readNotification: (id: string) => api.post<unknown>(`${A}/notifications/${id}/read`),
+  readAllNotifications: () => api.post<unknown>(`${A}/notifications/read-all`),
+  health: () => api.get<HealthReport>(`${A}/health`),
+
+  // applications
+  apps: () => api.get<{ data: AdminApp[] }>(`${A}/applications`),
+  app: (id: string) => api.get<AdminApp>(`${A}/applications/${id}`),
+  createApp: (body: CreateAppBody) => api.post<AdminApp>(`${A}/applications`, body),
+  updateApp: (id: string, body: Partial<CreateAppBody>) => api.patch<AdminApp>(`${A}/applications/${id}`, body),
+  minimums: (id: string) => api.get<MinimumVersionsResponse>(`${A}/applications/${id}/minimum-versions`),
+  minimumImpact: (id: string, q: { channel: string; platform?: string | null; version: string; enforce_from?: string | null }) =>
+    api.get<MinimumImpact>(`${A}/applications/${id}/minimum-versions/impact`, q),
+  setMinimum: (
+    id: string,
+    body: { channel: string; platform: Platform | null; minimum_version: string; enforce_from: string | null; message: string; reason: string },
+  ) => api.put<MinimumVersionsResponse>(`${A}/applications/${id}/minimum-versions`, body),
+  downloadPage: (id: string) => api.get<DownloadPageAdmin>(`${A}/applications/${id}/download-page`),
+  saveDownloadPage: (id: string, body: DownloadPageDraftBody) => api.put<DownloadPageAdmin>(`${A}/applications/${id}/download-page`, body),
+  publishDownloadPage: (id: string) => api.post<DownloadPageAdmin>(`${A}/applications/${id}/download-page/publish`),
+  previewMarkdown: (markdown: string) => api.post<{ html: string }>(`${A}/content/preview`, { markdown }),
+  channels: () => api.get<{ data: AdminChannel[] }>(`${A}/channels`),
+  updateChannel: (id: string, body: Partial<AdminChannel>) => api.patch<AdminChannel>(`${A}/channels/${id}`, body),
+  platforms: () => api.get<{ data: (AppPlatform & { app_id: string; app_name: string })[] }>(`${A}/platforms`),
+
+  // releases
+  releases: (f: ReleaseFilters) => api.get<ReleaseListResponse>(`${A}/releases`, f),
+  createRelease: (body: CreateReleaseBody) => api.post<AdminRelease>(`${A}/releases`, body),
+  release: (id: string) => api.get<AdminReleaseDetail>(rel(id)),
+  updateRelease: (id: string, body: Partial<AdminRelease>) => api.patch<AdminRelease>(rel(id), body),
+  checklist: (id: string) => api.get<Checklist>(`${rel(id)}/checklist`),
+  saveChangelog: (id: string, body: { locale?: string; summary: string; highlights: string[]; sections: ChangelogSections; markdown?: string }) =>
+    api.put<Changelog>(`${rel(id)}/changelog`, body),
+  submitTest: (id: string) => api.post<AdminRelease>(`${rel(id)}/submit-test`),
+  startTesting: (id: string) => api.post<AdminRelease>(`${rel(id)}/start-testing`),
+  qa: (id: string, body: { decision: 'PASS' | 'FAIL'; platform?: Platform; comment: string }) => api.post<AdminRelease>(`${rel(id)}/qa`, body),
+  approve: (id: string, comment?: string) => api.post<AdminRelease>(`${rel(id)}/approve`, { comment }),
+  publishSummary: (id: string) => api.get<PublishSummary>(`${rel(id)}/publish-summary`),
+  publish: (id: string, body: { reason?: string; scheduled_publish_at?: string | null }, mfaToken?: string) =>
+    api.post<AdminRelease>(`${rel(id)}/publish`, body, { mfaToken, skipMfaPrompt: !!mfaToken }),
+  pause: (id: string, reason: string) => api.post<AdminRelease>(`${rel(id)}/pause`, { reason }),
+  resume: (id: string) => api.post<AdminRelease>(`${rel(id)}/resume`, {}),
+  withdraw: (id: string, body: { reason: string; confirm_version: string }, mfaToken?: string) =>
+    api.post<AdminRelease>(`${rel(id)}/withdraw`, body, { mfaToken, skipMfaPrompt: !!mfaToken }),
+  supersede: (id: string, reason: string) => api.post<AdminRelease>(`${rel(id)}/supersede`, { reason }),
+  setPolicy: (id: string, body: PolicyBody) => api.put<AdminRelease>(`${rel(id)}/policy`, body),
+  setSupportState: (id: string, body: { support_state: SupportState; reason: string }) => api.put<AdminRelease>(`${rel(id)}/support-state`, body),
+  preview: (id: string) => api.get<ReleasePreview>(`${rel(id)}/preview`),
+  manifest: (id: string) => api.get<ManifestInfo>(`${rel(id)}/manifest`),
+  regenerateManifest: (id: string, reason: string) => api.post<ManifestInfo>(`${rel(id)}/manifest/regenerate`, { reason }),
+  saveRollout: (id: string, body: Omit<Rollout, 'status' | 'stage_no' | 'percentage' | 'started_at' | 'paused_at' | 'completed_at' | 'progress'>) =>
+    api.put<Rollout>(`${rel(id)}/rollout`, body),
+  rolloutAction: (id: string, action: 'pause' | 'resume' | 'increase' | 'complete', body: { percentage?: number; reason?: string }) =>
+    api.post<Rollout>(`${rel(id)}/rollout/${action}`, body),
+  releaseDownloads: (id: string) => api.get<ReleaseDownloads>(`${rel(id)}/downloads`, { group: 'day' }),
+  releaseDevices: (id: string) => api.get<ReleaseDevices>(`${rel(id)}/devices`),
+  releaseActivity: (id: string) => api.get<{ data: AuditEntry[] }>(`${rel(id)}/activity`),
+
+  // packages
+  createPackage: (id: string, body: CreatePackageBody) => api.post<CreatePackageResponse>(`${rel(id)}/packages`, body),
+  pkg: (id: string, pkgId: string) => api.get<AdminPackage>(`${rel(id)}/packages/${pkgId}`),
+  deletePackage: (id: string, pkgId: string, body: { reason: string; confirm_file_name: string }) => api.delete<unknown>(`${rel(id)}/packages/${pkgId}`, body),
+  completeMultipart: (id: string, pkgId: string, body: { upload_id: string; parts: { part_number: number; etag: string }[] }) =>
+    api.post<AdminPackage>(`${rel(id)}/packages/${pkgId}/complete`, body),
+
+  // server
+  serverMeta: (id: string, body: Partial<ServerMeta>) => api.put<ServerMeta>(`${rel(id)}/server-meta`, body),
+  campaign: (id: string) => api.get<Campaign>(`${rel(id)}/campaign`),
+  saveCampaign: (id: string, body: CampaignBody) => api.put<Campaign>(`${rel(id)}/campaign`, body),
+  installations: (q: Query) => api.get<ListResponse<Installation>>(`${A}/installations`, q),
+  installationStats: () => api.get<InstallationStats>(`${A}/installations/stats`),
+  fleetAction: (releaseId: string, action: 'start' | 'pause' | 'resume' | 'advance') => api.post<Campaign>(`${A}/fleet/${releaseId}/${action}`, {}),
+
+  // analytics
+  downloads: (q: Query) => api.get<DownloadAnalytics>(`${A}/analytics/downloads`, q),
+  downloadsCsvUrl: (q: Query) => buildUrl(`${A}/analytics/downloads`, { ...q, format: 'csv' }),
+  devices: (q: Query) => api.get<DeviceAnalytics>(`${A}/analytics/devices`, q),
+  updateStatus: (q: Query) => api.get<UpdateStatusAnalytics>(`${A}/analytics/update-status`, q),
+
+  // administration
+  users: () => api.get<{ data: AdminUser[] }>(`${A}/users`),
+  createUser: (body: { email: string; name: string; password: string; roles: string[] }) => api.post<AdminUser>(`${A}/users`, body),
+  updateUser: (id: string, body: { name?: string; status?: string; roles?: string[] }) => api.patch<AdminUser>(`${A}/users/${id}`, body),
+  resetUserMfa: (id: string, reason: string) => api.post<unknown>(`${A}/users/${id}/reset-mfa`, { reason }),
+  roles: () => api.get<RolesMatrix>(`${A}/roles`),
+  apiClients: () => api.get<{ data: ApiClient[] }>(`${A}/api-clients`),
+  createApiClient: (body: { name: string; kind: string; permissions: string[]; ip_allowlist: string[]; expires_at: string | null }) =>
+    api.post<{ client: ApiClient; secret: string }>(`${A}/api-clients`, body),
+  rotateApiClient: (id: string) => api.post<{ secret: string }>(`${A}/api-clients/${id}/rotate`),
+  revokeApiClient: (id: string) => api.post<unknown>(`${A}/api-clients/${id}/revoke`),
+  storage: () => api.get<StorageOverview>(`${A}/storage`),
+  testStorage: (id: string) => api.post<{ ok: boolean; status?: string; latency_ms?: number; detail?: string }>(`${A}/storage/${id}/test`),
+  activateStorage: (id: string) => api.post<unknown>(`${A}/storage/${id}/activate`),
+  probeStorage: () => api.post<unknown>(`${A}/storage/probe`),
+  signingKeys: () => api.get<{ data: SigningKey[] }>(`${A}/signing-keys`),
+  rotateKey: (body: { purpose: string; new_key_id: string; approver_code: string; reason: string }) => api.post<unknown>(`${A}/signing-keys/rotate`, body),
+  audit: (q: Query) => api.get<ListResponse<AuditEntry>>(`${A}/audit`, q),
+  auditCsvUrl: (q: Query) => buildUrl(`${A}/audit`, { ...q, format: 'csv' }),
+  verifyAudit: () => api.get<{ ok: boolean; checked: number; broken_at: number | null }>(`${A}/audit/verify`),
+  settings: () => api.get<Settings>(`${A}/settings`),
+  saveSettings: (body: Settings) => api.put<Settings>(`${A}/settings`, body),
+};
