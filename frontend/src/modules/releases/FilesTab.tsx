@@ -135,7 +135,7 @@ function DesktopPackages({ release, onUpload }: { release: AdminReleaseDetail; o
                   <Td className="font-semibold">{PLATFORM_LABEL[p.platform]}</Td>
                   <Td>{p.platform === 'macos' ? archLabel('macos', p.architecture) : p.architecture === 'arm64' ? 'ARM64' : p.architecture}</Td>
                   <Td>{PACKAGE_LABEL[p.package_type]}</Td>
-                  <Td className="max-w-52 font-mono text-[11.5px] break-all">{r?.file_name ?? <span className="font-sans text-subtle">not uploaded</span>}</Td>
+                  <Td className="font-mono text-[11.5px] whitespace-nowrap">{r?.file_name ?? <span className="font-sans text-subtle">not uploaded</span>}</Td>
                   <Td className="text-right font-mono text-[11.5px] whitespace-nowrap">{r ? formatBytes(r.size) : '—'}</Td>
                   <Td className="font-mono text-[11.5px]">{r ? `r${r.revision_number}` : '—'}</Td>
                   <Td className="whitespace-nowrap">

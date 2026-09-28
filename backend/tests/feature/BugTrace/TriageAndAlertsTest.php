@@ -5,6 +5,7 @@ namespace Tests\Feature\BugTrace;
 require_once __DIR__ . '/BugTraceTestCase.php';
 
 use App\Services\BugTrace\AlertService;
+use CodeIgniter\Test\StreamFilterTrait;
 
 /**
  * FR-BT-ISS-01/04 (filters, bulk, comments, links, permissions, tenant
@@ -13,6 +14,8 @@ use App\Services\BugTrace\AlertService;
  */
 final class TriageAndAlertsTest extends BugTraceTestCase
 {
+    use StreamFilterTrait;
+
     public function testTriageApiAndPermissions(): void
     {
         $tpt = $this->tpt(['policy' => 'CRASHES_AND_ERRORS'], 'tnt_ACME');
@@ -132,11 +135,10 @@ final class TriageAndAlertsTest extends BugTraceTestCase
     public function testSparkCommandsRun(): void
     {
         $this->envelope(['events' => [$this->webError()]])->assertStatus(202);
-        foreach (['bugtrace:rollup', 'bugtrace:alerts', 'bugtrace:retention', 'bugtrace:symbolicate'] as $cmd) {
-            ob_start();
+        foreach (['bugtrace:rollup', 'bugtrace:alerts', 'bugtrace:alerts --digest', 'bugtrace:retention', 'bugtrace:symbolicate'] as $cmd) {
+            $this->resetStreamFilterBuffer();
             command($cmd);
-            $out = (string) ob_get_clean();
-            $this->assertStringContainsString($cmd, $out . $cmd);
+            $this->assertStringContainsString(explode(' ', $cmd)[0] . ' —', $this->getStreamFilterBuffer());
         }
         $this->assertSame(1, db_connect()->table('bt_events')->countAllResults());
     }
