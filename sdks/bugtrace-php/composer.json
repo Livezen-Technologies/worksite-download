@@ -1,0 +1,20 @@
+{
+    "name": "worksuite/bugtrace-php",
+    "description": "Bug Trace reporter for the WorkSuite tenant server (CodeIgniter 4): captures exceptions into a Redis queue, `spark bugtrace:flush` sends batches to the Update Center.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.2",
+        "ext-json": "*",
+        "ext-zlib": "*"
+    },
+    "suggest": {
+        "ext-redis": "Queue backend (falls back to a spool file)",
+        "ext-curl": "HTTP transport (falls back to streams)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Core\\Libraries\\": "src/"
+        }
+    }
+}

@@ -255,9 +255,13 @@ export class BugTraceClient {
 
   /** Move pending data to the persistent queue and send what is due. Never throws. */
   flush(): Promise<void> {
-    if (this.flushing) return this.flushing;
-    this.flushing = this.doFlush().catch(() => undefined).finally(() => (this.flushing = null));
-    return this.flushing;
+    // Serialised: a flush requested while one runs is chained after it (never lost).
+    const run = (this.flushing ?? Promise.resolve()).then(() => this.doFlush()).catch(() => undefined);
+    this.flushing = run;
+    void run.then(() => {
+      if (this.flushing === run) this.flushing = null;
+    });
+    return run;
   }
 
   private async doFlush(): Promise<void> {

@@ -111,7 +111,7 @@ export function HomePage() {
       : null,
   );
 
-  if (site.isLoading || site.error) return <QueryState error={site.error} isLoading={site.isLoading} refetch={site.refetch} />;
+  if (!site.data) return <QueryState error={site.error} isLoading={site.isLoading} refetch={site.refetch} />;
   const apps = site.data!.apps;
   const pkgs = latest?.packages ?? [];
   return (

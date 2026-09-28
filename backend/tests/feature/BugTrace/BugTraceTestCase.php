@@ -3,6 +3,8 @@
 namespace Tests\Feature\BugTrace;
 
 use App\Libraries\BugTrace\Vault;
+use App\Libraries\Storage\CdnUrlSigner;
+use App\Libraries\Storage\LocalReleaseProvider;
 use App\Libraries\Semver;
 use App\Libraries\Trust\TokenIssuer;
 use App\Libraries\Trust\TrustChain;
@@ -23,18 +25,35 @@ abstract class BugTraceTestCase extends UcTestCase
 
     protected SpyNotifier $notifier;
 
+    private string $blobDir = '';
+
     /** @var array{0:string,1:string}|null */
     private ?array $root = null;
 
     protected function setUp(): void
     {
         parent::setUp();
-        Vault::setProvider(null);
+        // Encrypted blobs go to a throw-away directory, not the dev storage bucket.
+        $this->blobDir = sys_get_temp_dir() . '/bt-blobs-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        Vault::setProvider(new LocalReleaseProvider($this->blobDir, 'http://example.com/_dev-cdn', new CdnUrlSigner('test-cdn-secret')));
         EventProcessor::flushCache();
         $this->notifier = new SpyNotifier();
         Services::injectMock('notifier', $this->notifier);
         $this->root = TokenIssuer::keypair();
         Services::injectMock('trustChain', new TrustChain(['test-root' => $this->root[1]]));
+    }
+
+    protected function tearDown(): void
+    {
+        Vault::setProvider(null);
+        if ($this->blobDir !== '' && is_dir($this->blobDir)) {
+            $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->blobDir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+            foreach ($it as $f) {
+                $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+            }
+            @rmdir($this->blobDir);
+        }
+        parent::tearDown();
     }
 
     /** Reset per-request state (FeatureTestTrait keeps headers/body/format between calls). */

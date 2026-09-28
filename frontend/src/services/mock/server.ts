@@ -75,6 +75,11 @@ export function resetMockState(): void {
   state = buildInitialState();
   session = { userId: null, pending: null, stepUpUntil: 0, csrf: 'mock-csrf' };
 }
+/** Test helper: expire the 10-minute step-up window. */
+export function expireStepUp(): void {
+  session.stepUpUntil = 0;
+  saveSession();
+}
 export function getMockState(): MockState {
   return state;
 }

@@ -75,6 +75,16 @@ B1 Bug Trace core).
   schema, per-file SHA-256, edition content, post-update allow-list), server
   update API with upgrade chains, installation registry, notification
   campaigns with reminders, managed fleet with auto-pause.
+- **Bug Trace (§18)** — ingest API (gzip envelopes, minidumps, attachments,
+  user reports with reference + status token), server-side PII scrubbing
+  (emails, phones, Sri Lankan NIC, Luhn-checked cards, IBAN, tokens,
+  passwords, IPs), fingerprinting and issue grouping with merge/split,
+  regression detection, JavaScript source-map symbolication, release
+  health (crash-free users/sessions) with a rollout gate, alert rules with
+  quiet hours and digests, tenant reporting policy via TPT, privacy
+  deletion/export and retention; `@worksuite/bugtrace-web` SDK (13 KB gzip)
+  with a "Report a bug" dialog and screenshot annotation; PHP
+  `BugTraceReporter` reference for tenant servers.
 - **Operations** — storage abstraction (R2, S3, Spaces, MinIO, Local) with
   SigV4 presigning and HMAC-signed CDN URLs, copy-and-verify storage
   migration, component health checks, DB job queue, hash-chained append-only

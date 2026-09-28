@@ -3,7 +3,6 @@ import { createRoot, hydrateRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { hydrate, type DehydratedState } from '@tanstack/react-query';
 import './index.css';
-import { config } from '@/core/config';
 import { createQueryClient } from '@/app/queryClient';
 import { Providers } from '@/app/Providers';
 import { AppRoutes } from '@/app/AppRoutes';
@@ -15,7 +14,8 @@ declare global {
 }
 
 async function boot() {
-  if (config.mock) {
+  // Literal env check so Vite drops the mock chunk entirely from non-mock builds.
+  if (import.meta.env.VITE_API_MOCK === 'true') {
     const mock = await import('./services/mock');
     mock.installMock();
   }

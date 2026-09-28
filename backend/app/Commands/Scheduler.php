@@ -32,7 +32,9 @@ class Scheduler extends BaseCommand
         'storage_probe'     => 60,
         'analytics'         => 60,
         'cleanup'           => 60,
-        'bugtrace'          => 5,
+        'bugtrace_alerts'   => 5,
+        'bugtrace_rollup'   => 60,
+        'bugtrace_daily'    => 1440,
     ];
 
     public function run(array $params)
@@ -149,20 +151,36 @@ class Scheduler extends BaseCommand
         return $expired ? [count($expired) . ' uploads expired'] : [];
     }
 
-    private function taskBugtrace(): array
+    /** Bug Trace (§18): alerts every 5 min, roll-ups hourly, digest + retention daily. */
+    private function taskBugtraceAlerts(): array
     {
-        $out = [];
-        foreach (['bugtrace:rollup', 'bugtrace:alerts', 'bugtrace:retention'] as $cmd) {
-            if (array_key_exists($cmd, service('commands')->getCommands())) {
-                ob_start();
-                command($cmd);
-                $o = trim((string) ob_get_clean());
-                if ($o !== '') {
-                    $out[] = $o;
-                }
-            }
-        }
+        return $this->spark('bugtrace:alerts');
+    }
 
-        return $out;
+    private function taskBugtraceRollup(): array
+    {
+        return $this->spark('bugtrace:rollup');
+    }
+
+    private function taskBugtraceDaily(): array
+    {
+        return array_merge($this->spark('bugtrace:alerts', ['digest' => true]), $this->spark('bugtrace:retention'));
+    }
+
+    /** @param array<string, mixed> $options */
+    private function spark(string $cmd, array $options = []): array
+    {
+        if (! array_key_exists($cmd, service('commands')->getCommands())) {
+            return [];
+        }
+        $line = $cmd;
+        foreach ($options as $k => $v) {
+            $line .= ' --' . $k . ($v === true ? '' : ' ' . escapeshellarg((string) $v));
+        }
+        ob_start();
+        command($line);
+        $out = trim((string) ob_get_clean());
+
+        return $out === '' ? [] : [$out];
     }
 }

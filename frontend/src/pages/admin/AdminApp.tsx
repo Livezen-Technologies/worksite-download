@@ -4,11 +4,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import { MfaPromptProvider } from '@/components/MfaPrompt';
 import { Alert, Spinner } from '@/components/ui';
-import { ForgotPage, LoginPage, ResetPage, SecuritySettings } from '@/pages/auth/AuthPages';
+import { ForgotPage, LoginPage, ResetPage } from '@/pages/auth/AuthPages';
 import { can } from '@/core/permissions';
 import Dashboard from './Dashboard';
 import { NewRelease, ReleasesList } from './Releases';
-import * as P from './pending';
+import * as P from './pages';
 
 const ReleaseScreen = lazy(() => import('@/modules/releases/ReleaseScreen'));
 
@@ -97,4 +97,3 @@ export default function AdminApp() {
   );
 }
 
-export { SecuritySettings };

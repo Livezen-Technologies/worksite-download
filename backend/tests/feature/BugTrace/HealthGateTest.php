@@ -103,5 +103,12 @@ final class HealthGateTest extends BugTraceTestCase
         $this->assertSame(3, $h['releases'][0]['update_failures']);
         $csv = (string) $this->h($admin)->get('api/v1/admin/bugtrace/health?format=csv')->response()->getBody();
         $this->assertStringContainsString('2.7.0', $csv);
+
+        // FR-BT-ING-09: install failures become an issue automatically (bugtrace:rollup).
+        $this->assertSame(3, (new \App\Services\BugTrace\UpdateTelemetryLinker())->run());
+        $this->assertSame(0, (new \App\Services\BugTrace\UpdateTelemetryLinker())->run(), 'watermark prevents double counting');
+        $issue = db_connect()->table('bt_issues')->where('title', 'Update install failed: UPDATE_DISK_FULL (windows)')->get()->getRowArray();
+        $this->assertSame(3, (int) $issue['events_count']);
+        $this->assertSame(3, (int) $issue['installations_count']);
     }
 }

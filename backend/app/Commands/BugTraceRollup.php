@@ -4,13 +4,15 @@ namespace App\Commands;
 
 use App\Libraries\BugTrace\Bt;
 use App\Services\BugTrace\IssueService;
+use App\Services\BugTrace\UpdateTelemetryLinker;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 
 /**
  * Hourly Bug Trace housekeeping: un-ignores issues whose "ignore until" date
  * passed, reconciles user/installation counters of recently active issues and
- * fills suggested issues for reports whose related event arrived late.
+ * fills suggested issues for reports whose related event arrived late, and
+ * links update install failures / rollbacks to issues (FR-BT-ING-09).
  * Schedule: every hour (cron `5 * * * *  php spark bugtrace:rollup`).
  */
 class BugTraceRollup extends BaseCommand
@@ -41,6 +43,7 @@ class BugTraceRollup extends BaseCommand
             $db->table('bt_reports')->where('id', $r['id'])->update(['suggested_issue_id' => $r['issue_id']]);
             $filled++;
         }
-        CLI::write(sprintf('bugtrace:rollup — un-ignored %d, reconciled %d issues, %d report suggestions', $n, count($recent), $filled));
+        $linked = (new UpdateTelemetryLinker())->run();
+        CLI::write(sprintf('bugtrace:rollup — un-ignored %d, reconciled %d issues, %d report suggestions, %d update failures linked', $n, count($recent), $filled, $linked));
     }
 }

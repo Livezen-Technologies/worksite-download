@@ -10,7 +10,7 @@ import { templatePath } from './scrub';
 export function instrument(client: BugTraceClient): () => void {
   if (typeof window === 'undefined') return () => undefined;
   const off: (() => void)[] = [];
-  const on = <K extends keyof WindowEventMap>(t: K, fn: (e: WindowEventMap[K]) => void, target: Window | Document = window, capture = false) => {
+  const on = <K extends keyof WindowEventMap | 'visibilitychange'>(t: K, fn: (e: K extends keyof WindowEventMap ? WindowEventMap[K] : Event) => void, target: Window | Document = window, capture = false) => {
     target.addEventListener(t, fn as EventListener, capture);
     off.push(() => target.removeEventListener(t, fn as EventListener, capture));
   };

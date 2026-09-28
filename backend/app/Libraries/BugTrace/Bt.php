@@ -154,16 +154,12 @@ final class Bt
     /** @return array{id: string, name: string}|null */
     public static function userRef(?int $userId): ?array
     {
-        static $cache = [];
         if ($userId === null || $userId === 0) {
             return null;
         }
-        if (! array_key_exists($userId, $cache)) {
-            $u               = self::db()->table('users')->select('public_id, name, email')->where('id', $userId)->get()->getRowArray();
-            $cache[$userId]  = $u ? ['id' => (string) $u['public_id'], 'name' => (string) ($u['name'] ?: $u['email'])] : null;
-        }
+        $u = self::db()->table('users')->select('public_id, name, email')->where('id', $userId)->get()->getRowArray();
 
-        return $cache[$userId];
+        return $u ? ['id' => (string) $u['public_id'], 'name' => (string) ($u['name'] ?: $u['email'])] : null;
     }
 
     /** Settings table JSON value (key => JSON) merged over defaults. */
