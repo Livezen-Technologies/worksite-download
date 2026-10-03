@@ -39,11 +39,22 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   `scripts/ship-binlogs.sh` (15 min RPO), `scripts/restore-drill.sh`;
   `uc:verify-release` re-hashes a release's packages from storage and checks
   the manifest signature; runbook in `docs/operations.md`.
+- **Native symbolication (FR-BT-ING-04, AC-C61/C62)** — Breakpad `.sym`
+  lookup for desktop (Windows/macOS/Linux), iOS and Android NDK frames
+  (CI converts PDB/dSYM/ELF with `dump_syms`; upload validates the `MODULE`
+  header and records the debug id), R8/ProGuard retrace for Android JVM
+  frames including inlined methods, and minidump walking with
+  `minidump-stackwalk` (`updatecenter.minidumpStackwalk`, read-only parser).
+  Events waiting for symbols (`missing`/`pending`) are re-symbolicated when
+  symbols arrive. Issue detail shows the native module / JVM class and the
+  real symbolication state.
 - CI builds, typechecks and tests all three SDKs; `scripts/version.php`
   keeps their versions in sync.
 
 ### Fixed
 
+- `@worksuite/bugtrace-web`: native SDKs pass captured frames as
+  `error.frames`; frames carry `module`, `debug_id`, `module_offset`.
 - `@worksuite/bugtrace-web`: `captureMessage` ignored `ctx.type`, so
   crash/hang messages were sent as `message`; typecheck failed without
   `@types/node`. `allowsAutomatic` / `policyFromTpt` are now exported.

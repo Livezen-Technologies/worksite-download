@@ -35,6 +35,10 @@ export interface NativeCrash {
   type: string;
   value: string;
   timestamp?: string;
+  /**
+   * Ordered outermost → innermost, like JS stacks.
+   * iOS / NDK: { module, debug_id, module_offset: "0x1a2b" }. Android Java: { module: "a.b.c" (class), function, line }.
+   */
   frames?: Frame[];
   thread?: string;
   /** For ANR / app hang: how long the main thread was blocked. */
@@ -276,12 +280,13 @@ export class MobileBugTrace {
       const type = hang ? 'hang' : 'crash';
       let id: string | null = null;
       if (this.allows(type)) {
-        const error = Object.assign(new Error(c.value), { name: c.type });
+        // Native frames travel as the exception's stack; the server symbolicates them
+        // (Breakpad symbols for iOS / NDK, R8 mapping for Android Java frames).
+        const error = Object.assign(new Error(c.value), { name: c.type, frames: c.frames?.slice(0, 100) });
         id = this.client.captureException(error, {
           type,
           handled: false,
           tags: this.tags({ native_kind: c.kind, ...(c.thread ? { thread: c.thread } : {}), ...(c.duration_ms ? { hang_ms: String(c.duration_ms) } : {}) }),
-          extra: c.frames?.length ? { native_frames: c.frames.slice(0, 100) } : undefined,
         });
       }
       latest = { kind: c.kind, title: `${c.type}: ${c.value}`, event_id: id };

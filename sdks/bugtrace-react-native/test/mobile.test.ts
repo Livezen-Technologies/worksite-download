@@ -53,12 +53,12 @@ describe('bugtrace-react-native', () => {
 
   it('turns native crashes, NDK tombstones and ANRs into events and clears them', async () => {
     const crashes: NativeCrash[] = [
-      { id: 'n1', kind: 'ndk_tombstone', type: 'SIGSEGV', value: 'Segmentation fault', frames: [{ function: 'libworksuite.so!decode' }] },
+      { id: 'n1', kind: 'ndk_tombstone', type: 'SIGSEGV', value: 'Segmentation fault', frames: [{ module: 'libworksuite.so', debug_id: 'ABC1', module_offset: '0x1a2b' }] },
       { id: 'n2', kind: 'anr', type: 'ANR', value: 'Input dispatching timed out', duration_ms: 6200 },
     ];
     const onPreviousCrash = vi.fn();
     const { spy, h } = await make('CRASHES_ONLY', kv(), crashes, { onPreviousCrash });
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ name: 'SIGSEGV' }), expect.objectContaining({ type: 'crash', tags: expect.objectContaining({ native_kind: 'ndk_tombstone' }) }));
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ name: 'SIGSEGV', frames: [expect.objectContaining({ module_offset: '0x1a2b' })] }), expect.objectContaining({ type: 'crash', tags: expect.objectContaining({ native_kind: 'ndk_tombstone' }) }));
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ name: 'ANR' }), expect.objectContaining({ type: 'hang', tags: expect.objectContaining({ hang_ms: '6200' }) }));
     expect(h.native.clearPendingCrashes).toHaveBeenCalledWith(['n1', 'n2']);
     expect(onPreviousCrash).toHaveBeenCalledWith(expect.objectContaining({ kind: 'anr' }));

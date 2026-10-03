@@ -33,8 +33,14 @@ export function toException(err: unknown, handled: boolean, mechanism: string): 
     type: e ? e.name || 'Error' : typeof err === 'object' && err ? 'NonErrorObject' : 'Error',
     value: e ? String(e.message) : safeString(err),
     mechanism: { type: mechanism, handled },
-    stacktrace: { frames: parseStack(e?.stack, origin) },
+    // Native SDKs (desktop/mobile) attach already-captured frames as `error.frames`.
+    stacktrace: { frames: nativeFrames(err) ?? parseStack(e?.stack, origin) },
   };
+}
+
+function nativeFrames(err: unknown): Frame[] | null {
+  const f = err && typeof err === 'object' ? (err as { frames?: unknown }).frames : undefined;
+  return Array.isArray(f) && f.length ? (f.slice(0, 100) as Frame[]) : null;
 }
 
 function safeString(v: unknown): string {

@@ -118,6 +118,12 @@ class UpdateCenter extends BaseConfig
     public int $btEnvelopeMaxBytes = 1048576;
     public int $btMinidumpMaxBytes = 20971520;
 
+    /**
+     * Minidump parser (rust-minidump `minidump-stackwalk`, read-only; it never
+     * executes code from the dump). Empty = minidumps stay `pending`.
+     */
+    public string $minidumpStackwalk = '';
+
     public function isProduction(): bool
     {
         return strtoupper($this->environmentName) === 'PRODUCTION';
