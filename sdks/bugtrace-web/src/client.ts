@@ -135,7 +135,7 @@ export class BugTraceClient {
   }
 
   captureMessage(message: string, level = 'info', ctx: CaptureContext = {}): string | null {
-    return this.capture('message', true, undefined, message, { ...ctx, level });
+    return this.capture(ctx.type ?? 'message', ctx.handled ?? true, undefined, message, { ...ctx, level });
   }
 
   private capture(type: EventType, handled: boolean, ex: BugTraceEvent['exception'][0] | undefined, message: string | undefined, ctx: CaptureContext): string | null {

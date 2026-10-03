@@ -19,6 +19,7 @@ export { Scrubber, templatePath } from './scrub';
 export { parseStack, isChunkLoadError } from './stack';
 export { MemoryStore, IdbStore, Queue } from './queue';
 export { Deduper } from './limits';
+export { allowsAutomatic, policyFromTpt } from './policy';
 
 let client: BugTraceClient | null = null;
 let uninstall: (() => void) | null = null;

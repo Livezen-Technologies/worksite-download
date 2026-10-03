@@ -13,6 +13,27 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop SDK `@worksuite/bugtrace-electron` (FR-BT-SDK-02)** — Electron
+  main process: uncaught exceptions and rejections, Crashpad minidumps
+  (local capture, policy-checked upload to `/bugtrace/minidump` on next
+  start), GPU/renderer/utility process crashes, window and main-loop hangs
+  > 5 s, ENH-02 updater failures; persistent offline queue and opt-out.
+- **Mobile SDK `@worksuite/bugtrace-react-native` (FR-BT-SDK-03)** — JS
+  global handler, native iOS/Android crashes and NDK tombstones via the
+  `WorkSuiteBugTrace` native module, ANR/app hangs (native + JS-thread
+  watchdog), out-of-memory termination detection, shake-to-report and
+  post-crash sheet hooks, AsyncStorage queue.
+- CI builds, typechecks and tests all three SDKs; `scripts/version.php`
+  keeps their versions in sync.
+
+### Fixed
+
+- `@worksuite/bugtrace-web`: `captureMessage` ignored `ctx.type`, so
+  crash/hang messages were sent as `message`; typecheck failed without
+  `@types/node`. `allowsAutomatic` / `policyFromTpt` are now exported.
+
 ## [0.2.0] - 2026-10-03
 
 ### Added

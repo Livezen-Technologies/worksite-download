@@ -1,0 +1,33 @@
+{
+  "name": "@worksuite/bugtrace-react-native",
+  "version": "0.2.0",
+  "description": "WorkSuite Bug Trace SDK for React Native: JS errors, native iOS/Android crashes and NDK tombstones, ANR / app hangs, out-of-memory terminations, shake-to-report (FR-BT-SDK-03).",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/types/bugtrace-react-native/src/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "esbuild": "^0.25.0"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.74"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
+  }
+}

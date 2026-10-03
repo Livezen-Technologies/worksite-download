@@ -1,0 +1,22 @@
+{
+  "name": "@worksuite/bugtrace-electron",
+  "version": "0.2.0",
+  "description": "WorkSuite Bug Trace SDK for the Electron main process: uncaught exceptions, Crashpad minidumps, GPU/renderer crashes, hangs and updater failures (FR-BT-SDK-02).",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/types/bugtrace-electron/src/index.d.ts",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
