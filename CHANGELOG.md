@@ -35,6 +35,11 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ### Fixed
 
+- **Windows installers were rejected as the wrong architecture.** An NSIS
+  installer is a 32-bit x86 program whatever it installs, so every x64/arm64
+  setup.exe failed the metadata step ("Binary architecture x86 does not match
+  x64 slot"). An x86 `.exe` is now accepted in x64 and arm64 slots as an
+  installer stub; a 64-bit PE for the other CPU is still refused.
 - **Migrations failed on MySQL/MariaDB.** The seven-column unique key on the
   daily download analytics generated an index name longer than the 64-character
   limit, so `migrate --all` stopped at `CreateDistributionTables`. SQLite, where
