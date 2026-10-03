@@ -917,17 +917,21 @@ export interface ReportSummary {
 }
 
 export interface StackFrame {
-  file: string;
-  function: string;
+  file: string | null;
+  function: string | null;
   line: number | null;
   col: number | null;
   in_app: boolean;
+  /** Native module or JVM class (desktop / mobile). */
+  module?: string;
+  symbolicated?: boolean;
   context?: { pre: string[]; line: string; post: string[] };
 }
 
 export interface IssueDetail extends Issue {
   latest_event: { id: string; timestamp: string; message?: string; [key: string]: unknown };
   frames: StackFrame[];
+  symbolication?: 'ok' | 'partial' | 'missing' | 'pending' | 'n/a';
   breadcrumbs: { timestamp: string; category: string; message: string; level?: string }[];
   tags: Record<string, string> | { key: string; value: string }[];
   distributions: Record<'os' | 'browser' | 'release' | 'edition', { name: string; count: number }[]>;

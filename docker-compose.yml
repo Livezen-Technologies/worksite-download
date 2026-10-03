@@ -21,6 +21,7 @@ x-api-env: &api-env
   encryption.key: ${UC_ENCRYPTION_KEY:-hex2bin:3f1c9a7e2b5d4c6f8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f}
   UC_APP_SECRET: ${UC_APP_SECRET:-dev-only-app-secret}
   UC_CDN_SECRET: ${UC_CDN_SECRET:-dev-only-cdn-secret}
+  UC_METRICS_TOKEN: ${UC_METRICS_TOKEN:-dev-only-metrics-token}
 
 services:
   update-web:
@@ -75,6 +76,19 @@ services:
   clamav:
     image: clamav/clamav:1.4
     profiles: ["scan"]
+
+  # Monitoring (§13.4): docker compose --profile monitoring up
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["monitoring"]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
+    environment:
+      UC_METRICS_TOKEN: ${UC_METRICS_TOKEN:-dev-only-metrics-token}
+    volumes:
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./docker/monitoring/metrics_token:/etc/prometheus/metrics_token:ro
+    ports: ["127.0.0.1:9090:9090"]
 
 volumes:
   mariadb: {}

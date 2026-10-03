@@ -13,6 +13,74 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-03
+
+### Added
+
+- **Desktop SDK `@worksuite/bugtrace-electron` (FR-BT-SDK-02)** — Electron
+  main process: uncaught exceptions and rejections, Crashpad minidumps
+  (local capture, policy-checked upload to `/bugtrace/minidump` on next
+  start), GPU/renderer/utility process crashes, window and main-loop hangs
+  > 5 s, ENH-02 updater failures; persistent offline queue and opt-out.
+- **Mobile SDK `@worksuite/bugtrace-react-native` (FR-BT-SDK-03)** — JS
+  global handler, native iOS/Android crashes and NDK tombstones via the
+  `WorkSuiteBugTrace` native module, ANR/app hangs (native + JS-thread
+  watchdog), out-of-memory termination detection, shake-to-report and
+  post-crash sheet hooks, AsyncStorage queue.
+- **Monitoring (§13.4, FR-UC-OPS-05)** — `GET /metrics` Prometheus
+  exporter (bearer token, internal networks only): request rate, 5xx and
+  latency histogram per route group (Redis-backed, unhandled exceptions
+  included), queue backlog/age, upload rejections and stuck jobs, resolver
+  failures, update events, webhook failures, component health, signing /
+  signature failures; Prometheus config and alert rules for every §13.4
+  signal (`docker/monitoring`, compose profile `monitoring`).
+- **Backups (§13.3, FR-UC-OPS-04)** — `uc:export` daily write-once export
+  of configuration, changelogs, manifests and incremental audit log (secrets
+  never exported, existing objects never overwritten), scheduled by
+  `uc:scheduler`; `scripts/backup-db.sh` (encrypted full dump),
+  `scripts/ship-binlogs.sh` (15 min RPO), `scripts/restore-drill.sh`;
+  `uc:verify-release` re-hashes a release's packages from storage and checks
+  the manifest signature; the health page shows the age of the last export
+  (DEGRADED after a missed day); runbook in `docs/operations.md`.
+- **Native symbolication (FR-BT-ING-04, AC-C61/C62)** — Breakpad `.sym`
+  lookup for desktop (Windows/macOS/Linux), iOS and Android NDK frames
+  (CI converts PDB/dSYM/ELF with `dump_syms`; upload validates the `MODULE`
+  header and records the debug id), R8/ProGuard retrace for Android JVM
+  frames including inlined methods, and minidump walking with
+  `minidump-stackwalk` (`updatecenter.minidumpStackwalk`, read-only parser).
+  Events waiting for symbols (`missing`/`pending`) are re-symbolicated when
+  symbols arrive. Issue detail shows the native module / JVM class and the
+  real symbolication state.
+- **Tenant mirror feed (§2.5 mirror mode, Phase 5)** —
+  `GET /api/v1/catalog/mirror/{app}/{channel}` for tenant API clients:
+  signed channel and release manifests verbatim, per-package SHA-256 and
+  7-day download grants so self-hosted / air-gapped tenants can copy
+  packages into their own storage; licensed server editions excluded.
+- CI builds, typechecks and tests all three SDKs; `scripts/version.php`
+  keeps their versions in sync.
+
+### Fixed
+
+- `@worksuite/bugtrace-web`: native SDKs pass captured frames as
+  `error.frames`; frames carry `module`, `debug_id`, `module_offset`.
+- `@worksuite/bugtrace-web`: `captureMessage` ignored `ctx.type`, so
+  crash/hang messages were sent as `message`; typecheck failed without
+  `@types/node`. `allowsAutomatic` / `policyFromTpt` are now exported.
+
+## [0.2.0] - 2026-10-03
+
+### Added
+
+- **Edition switch (FR-TEN-UPD-17, AC-C54)** — `GET /api/v1/server/update`
+  accepts `installed_edition`; when it differs from the licensed edition the
+  signed response carries `edition_switch` with the same version's package
+  for the new edition (`UPGRADE` / `DOWNGRADE`, data kept) and a download grant.
+
+### Fixed
+
+- Backend test suite failed (9 tests) without an encryption key configured;
+  `phpunit.dist.xml` now sets a test-only key.
+
 ## [0.1.0] - 2026-09-28
 
 First build of the Update Distribution Portal from
@@ -116,5 +184,7 @@ B1 Bug Trace core).
   never executed; storage credentials are resolved from the secret service
   by reference only; telemetry stores no IP addresses or user identities.
 
-[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Livezen-Technologies/worksite-download/releases/tag/v0.1.0

@@ -58,14 +58,23 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
 
   sdk:
-    name: Bug Trace web SDK
+    name: Bug Trace SDK (${{ matrix.sdk }})
     runs-on: ubuntu-latest
-    defaults:
-      run: { working-directory: sdks/bugtrace-web }
+    strategy:
+      matrix:
+        sdk: [bugtrace-web, bugtrace-electron, bugtrace-react-native]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
+      # electron / react-native import the web SDK sources, which need its dev dependencies.
       - run: npm ci || npm install
+        working-directory: sdks/bugtrace-web
+      - run: npm ci || npm install
+        working-directory: sdks/${{ matrix.sdk }}
+      - run: npm run typecheck
+        working-directory: sdks/${{ matrix.sdk }}
       - run: npm test
+        working-directory: sdks/${{ matrix.sdk }}
       - run: npm run build
+        working-directory: sdks/${{ matrix.sdk }}

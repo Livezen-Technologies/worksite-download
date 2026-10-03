@@ -3,6 +3,7 @@
 namespace App\Services\BugTrace;
 
 use App\Exceptions\ApiException;
+use App\Libraries\BugTrace\BreakpadSymbols;
 use App\Libraries\BugTrace\Bt;
 use App\Libraries\BugTrace\SourceMap;
 use App\Libraries\BugTrace\Symbolicator;
@@ -69,6 +70,17 @@ class SymbolService
             }
             $artifact ??= $map->file ?: preg_replace('/\.map$/', '', basename($fileName));
             $debugId  ??= $map->debugId !== null ? strtolower($map->debugId) : null;
+        }
+        if ($kind === 'breakpad') {
+            // MODULE <os> <arch> <debug_id> <name> — the debug id is the lookup key for native frames.
+            $head = (string) fgets(fopen($path, 'rb') ?: throw new ApiException('UPLOAD_REJECTED', 'Unreadable', 422));
+            if (! preg_match('/^MODULE \S+ \S+ ([0-9A-Fa-f]+) (.+)$/', trim($head), $mm)) {
+                throw new ApiException('UPLOAD_REJECTED', 'Not a Breakpad symbol file (convert PDB / dSYM / ELF with dump_syms)', 422, ['sub_code' => 'SYMBOLS_INVALID']);
+            }
+            $debugId  = BreakpadSymbols::normalizeDebugId($mm[1]);
+            $artifact = preg_replace('/\.(pdb|dbg|debug)$/i', '', trim($mm[2]));
+        } elseif ($kind === 'r8' && ! preg_match('/^\S+ -> \S+:$/m', (string) file_get_contents($path, false, null, 0, 1 << 20))) {
+            throw new ApiException('UPLOAD_REJECTED', 'Not an R8 / ProGuard mapping file', 422, ['sub_code' => 'SYMBOLS_INVALID']);
         }
         $sha = hash_file('sha256', $path);
         $key = 'bugtrace/symbols/' . ($release['id'] ?? preg_replace('/[^A-Za-z0-9.+_-]/', '_', $releaseStr)) . '/' . $kind . '/' . substr($sha, 0, 16) . '-' . preg_replace('/[^A-Za-z0-9._-]/', '_', basename($fileName));
@@ -146,7 +158,7 @@ class SymbolService
             return 0;
         }
         $db = Bt::db();
-        $b  = $db->table('bt_events')->whereIn('symbolication', ['missing', 'partial']);
+        $b  = $db->table('bt_events')->whereIn('symbolication', ['missing', 'partial', 'pending']);
         $b->groupStart();
         if ($releaseId !== null) {
             $b->where('release_id', $releaseId);
@@ -159,7 +171,7 @@ class SymbolService
         foreach ($b->orderBy('id', 'DESC')->limit($limit)->get()->getResultArray() as $e) {
             $project = EventProcessor::project((int) $e['project_id']);
             $ex      = Bt::decode($e['exception'], []);
-            $event   = ['type' => $e['type'], 'release' => $e['release'], 'exception' => $ex['values'] ?? []];
+            $event   = ['event_id' => $e['event_id'], 'type' => $e['type'], 'release' => $e['release'], 'exception' => $ex['values'] ?? []];
             $res     = (new Symbolicator())->symbolicate($event, $project, $e['release_id'] !== null ? (int) $e['release_id'] : null);
             if ($res['status'] !== $e['symbolication']) {
                 $db->table('bt_events')->where('id', $e['id'])->update(['symbolicated_frames' => Bt::json($res['frames']), 'symbolication' => $res['status']]);

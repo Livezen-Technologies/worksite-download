@@ -1,0 +1,76 @@
+# Alert rules for SRS §13.4 (FR-UC-OPS-05). Metric names: backend/app/Services/MetricsService.php.
+# Database / Redis replication lag and memory come from mysqld_exporter / redis_exporter.
+groups:
+  - name: update-center
+    rules:
+      - alert: ApiLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(uc_http_request_duration_seconds_bucket{group!~"metrics|admin"}[5m]))) > 0.4
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "API p95 latency above 400 ms for 5 minutes" }
+
+      - alert: ApiErrorRateHigh
+        expr: sum(rate(uc_http_requests_total{code="5xx"}[5m])) / clamp_min(sum(rate(uc_http_requests_total[5m])), 1e-9) > 0.01
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "More than 1 % of API requests return 5xx" }
+
+      - alert: UpdateCheckFailures
+        expr: sum(rate(uc_http_requests_total{group=~"update_check|server_update_check",code="5xx"}[10m])) / clamp_min(sum(rate(uc_http_requests_total{group=~"update_check|server_update_check"}[10m])), 1e-9) > 0.02
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "More than 2 % of update checks error" }
+
+      - alert: ManifestFailure
+        expr: increase(uc_http_requests_total{group="manifest",code="5xx"}[5m]) > 0 or increase(uc_events_total{event=~"signing_refused|signature_verification_failed"}[15m]) > 0
+        labels: { severity: page }
+        annotations: { summary: "Manifest 5xx or signature / signing failure" }
+
+      - alert: ResolverFailures
+        expr: uc_resolver_failures_5m / clamp_min(uc_resolver_requests_5m, 1) > 0.005 and uc_resolver_requests_5m > 20
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "Download resolver failing (503) for more than 0.5 % of requests" }
+
+      - alert: StorageProbeFailed
+        expr: uc_component_up{component=~"storage|cdn"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "Storage / CDN HEAD probe failing ({{ $labels.component }})" }
+
+      - alert: ComponentDown
+        expr: uc_component_up{component!~"storage|cdn"} == 0
+        for: 5m
+        labels: { severity: page }
+        annotations: { summary: "{{ $labels.component }} is DOWN" }
+
+      - alert: UploadProcessingFailures
+        expr: uc_upload_rejected_1h / clamp_min(uc_upload_processed_1h, 1) > 0.1 and uc_upload_processed_1h >= 5
+        labels: { severity: ticket }
+        annotations: { summary: "More than 10 % of uploads rejected in the last hour" }
+
+      - alert: UploadJobStuck
+        expr: uc_upload_stuck > 0
+        labels: { severity: ticket }
+        annotations: { summary: "Package processing stuck for more than 15 minutes" }
+
+      - alert: QueueBacklog
+        expr: uc_queue_backlog > 500 or uc_queue_oldest_age_seconds > 600
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "Job queue backlog > 500 or oldest job older than 10 minutes" }
+
+      - alert: InstallFailureRate
+        expr: sum(uc_update_events_1h{type="failed"}) / clamp_min(sum(uc_update_events_1h{type=~"installed|failed"}), 1) > 0.05 and sum(uc_update_events_1h{type=~"installed|failed"}) >= 50
+        labels: { severity: page }
+        annotations: { summary: "Desktop install failure rate above 5 % (last hour)" }
+
+      - alert: RollbackSpike
+        expr: sum(uc_update_events_1h{type="rolled_back"}) > 3 * sum(uc_update_events_1h{type="rolled_back"} offset 1d) and sum(uc_update_events_1h{type="rolled_back"}) >= 10
+        labels: { severity: page }
+        annotations: { summary: "Rollbacks spiking compared to the same hour yesterday" }
+
+      - alert: TenantWebhookFailing
+        expr: uc_webhook_oldest_failing_seconds > 3600
+        labels: { severity: ticket }
+        annotations: { summary: "Tenant catalog webhook delivery failing for more than 1 hour" }

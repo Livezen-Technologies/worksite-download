@@ -16,7 +16,7 @@
 
 $root      = dirname(__DIR__);
 $semver    = '/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/';
-$manifests = ['frontend/package.json', 'sdks/bugtrace-web/package.json'];
+$manifests = ['frontend/package.json', 'sdks/bugtrace-web/package.json', 'sdks/bugtrace-electron/package.json', 'sdks/bugtrace-react-native/package.json'];
 $changelog = $root . '/CHANGELOG.md';
 $repoUrl   = 'https://github.com/Livezen-Technologies/worksite-download';
 

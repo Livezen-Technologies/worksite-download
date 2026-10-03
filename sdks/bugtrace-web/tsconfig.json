@@ -8,7 +8,7 @@
     "noUnusedLocals": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "types": []
+    "types": ["node"]
   },
   "include": ["src", "test"]
 }

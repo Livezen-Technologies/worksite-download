@@ -226,6 +226,75 @@ final class ReleaseLifecycleTest extends UcTestCase
         $this->assertSame(422, $s);
     }
 
+    private function spark(string $cmd): string
+    {
+        \CodeIgniter\Test\Filters\CITestStreamFilter::registration();
+        \CodeIgniter\Test\Filters\CITestStreamFilter::addOutputFilter();
+        \CodeIgniter\Test\Filters\CITestStreamFilter::$buffer = '';
+        try {
+            command($cmd);
+        } finally {
+            \CodeIgniter\Test\Filters\CITestStreamFilter::removeOutputFilter();
+        }
+
+        return (string) preg_replace('/\e\[[\d;]*m/', '', \CodeIgniter\Test\Filters\CITestStreamFilter::$buffer);
+    }
+
+    /** §13.3 restore drill: manifest signature + storage objects re-hashed against the records. */
+    public function testVerifyReleaseCommand(): void
+    {
+        $id = $this->createReadyRelease('2.7.0', 27001);
+        $this->publish($id);
+        $out = $this->spark('uc:verify-release ' . $id);
+        $this->assertStringContainsString('signature OK', $out);
+        $this->assertStringContainsString('Release 2.7.0 verified.', $out);
+
+        // Tamper with one stored object → detected.
+        $db  = db_connect();
+        $rev = $db->table('release_package_revisions')->where('status', 'READY')->where('file_name', 'WorkSuite-2.7.0.AppImage')->get()->getRowArray();
+        $tmp = tempnam(sys_get_temp_dir(), 'tamper');
+        file_put_contents($tmp, 'not the original bytes');
+        \App\Libraries\Storage\StorageFactory::fromRow($db->table('storage_providers')->where('id', $rev['storage_provider_id'])->get()->getRowArray())->putFile($rev['storage_object_key'], $tmp);
+        @unlink($tmp); // the local provider may move the file into place
+        $out = $this->spark('uc:verify-release ' . $id);
+        $this->assertStringContainsString('HASH MISMATCH', $out);
+        $this->assertStringContainsString('FAILED verification', $out);
+    }
+
+    /** §2.5 tenant catalog sync + mirror mode (AC-C34 feed, Phase 5 mirrors). */
+    public function testTenantCatalogFeedAndMirror(): void
+    {
+        $id = $this->createReadyRelease('2.7.0', 27001);
+        $this->publish($id);
+        $this->setCookie('uc_session', null);
+        $tenant = $this->makeClient(['release.view'], 'TENANT');
+
+        $feed = $this->json($this->withHeaders($tenant)->get('api/v1/catalog/changes?since=0'));
+        $this->assertContains('release.published', array_column($feed['data'] ?? $feed['changes'] ?? [], 'event'), json_encode($feed));
+
+        $res = $this->withHeaders($tenant)->get('api/v1/catalog/mirror/desktop/stable');
+        $res->assertStatus(200);
+        $m = $this->json($res);
+        $this->assertSame('stable', $m['channel']);
+        $this->assertTrue(\App\Libraries\Signing\Ed25519::verifyDocument($m['channel_manifest'], \App\Services\KeyRegistry::releaseKeys()), 'channel manifest is served as signed');
+        $rel = $m['releases'][0];
+        $this->assertSame('2.7.0', $rel['version']);
+        $this->assertTrue(\App\Libraries\Signing\Ed25519::verifyDocument($rel['release_manifest'], \App\Services\KeyRegistry::releaseKeys()));
+        $this->assertCount(4, $rel['files']);
+        $signed = array_column($rel['release_manifest']['packages'], 'sha256', 'file_name');
+        foreach ($rel['files'] as $f) {
+            $this->assertSame($signed[$f['file_name']], $f['sha256'], 'mirror hashes match the signed manifest');
+        }
+        // Grants redeem to short-lived CDN URLs for the mirror to copy.
+        $g = $this->json($this->withBodyFormat('json')->post('api/v1/downloads/grant', ['grant' => $rel['files'][0]['download_grant']]));
+        $this->assertSame($rel['files'][0]['sha256'], $g['sha256']);
+        $this->assertNotEmpty($g['download_url']);
+
+        // Anonymous callers and non-tenant clients cannot mirror.
+        $this->assertSame(401, $this->withHeaders(['Authorization' => ''])->get('api/v1/catalog/mirror/desktop/stable')->response()->getStatusCode());
+        $this->assertSame(403, $this->withHeaders($this->makeClient(['release.upload']))->get('api/v1/catalog/mirror/desktop/stable')->response()->getStatusCode());
+    }
+
     public function testSupersedeAndPauseFallback(): void
     {
         $a = $this->createReadyRelease('2.6.5', 26505);

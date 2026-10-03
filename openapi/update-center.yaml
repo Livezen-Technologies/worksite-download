@@ -217,6 +217,17 @@ paths:
       security: [{ apiClient: [] }]
       parameters: [{ name: since, in: query, schema: { type: integer } }, { name: limit, in: query, schema: { type: integer } }]
       responses: { "200": { description: OK } }
+  /api/v1/catalog/mirror/{app}/{channel}:
+    get:
+      tags: [Tenant]
+      summary: Mirror feed for self-hosted / air-gapped tenants — signed manifests verbatim plus 7-day download grants (§2.5 mirror mode)
+      description: Licensed server editions are excluded; they are downloaded with the installation license.
+      security: [{ apiClient: [] }]
+      parameters:
+        - { name: app, in: path, required: true, schema: { type: string } }
+        - { name: channel, in: path, required: true, schema: { type: string } }
+        - { name: keep, in: query, description: Releases to include (1–10, default 3), schema: { type: integer } }
+      responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Error" } }
   /api/v1/keys:
     get: { tags: [Public], summary: Release/response public keys and rotation documents, responses: { "200": { description: OK } } }
   /download/{path}:
@@ -234,6 +245,7 @@ paths:
         - { name: version, in: query, schema: { type: string } }
         - { name: build, in: query, schema: { type: integer } }
         - { name: edition, in: query, schema: { type: string, enum: [free, business, enterprise] } }
+        - { name: installed_edition, in: query, description: "Edition currently installed; when it differs from the licensed edition the response carries edition_switch (FR-TEN-UPD-17)", schema: { type: string, enum: [free, business, enterprise] } }
         - { name: channel, in: query, schema: { type: string } }
       responses: { "200": { description: Signed server update response }, "401": { $ref: "#/components/responses/Error" } }
   /api/v1/server/downloads/grant:

@@ -9,6 +9,11 @@ export interface Frame {
   line?: number;
   col?: number;
   in_app?: boolean;
+  /** Native frames: module name, Breakpad debug id and module-relative offset (hex), or Java class. */
+  module?: string;
+  debug_id?: string;
+  module_offset?: string;
+  instruction_addr?: string;
 }
 
 export interface ExceptionValue {
