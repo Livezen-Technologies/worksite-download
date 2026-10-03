@@ -35,6 +35,13 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ### Fixed
 
+- **A synced passkey worked once, then never again.** After each sign-in the
+  stored signature counter was set to "previous + 1" instead of the counter
+  the authenticator reported. iCloud Keychain and Google Password Manager
+  passkeys always report 0, so the second sign-in compared 1 ≥ 0 and was
+  refused as a cloned key ("Passkey verification failed"). The real counter
+  is stored now, failures are logged with their reason, and a test signs in
+  repeatedly with a software authenticator.
 - **Windows installers were rejected as the wrong architecture.** An NSIS
   installer is a 32-bit x86 program whatever it installs, so every x64/arm64
   setup.exe failed the metadata step ("Binary architecture x86 does not match
