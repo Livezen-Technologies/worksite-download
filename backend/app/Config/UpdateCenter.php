@@ -81,6 +81,14 @@ class UpdateCenter extends BaseConfig
 
     /** Signature verification: skip (dev) | tools (osslsigncode, rcodesign, gpg). */
     public string $signatureVerifier = 'skip';
+
+    /**
+     * Accept unsigned installers on every channel except STABLE (BETA, DEV, INTERNAL).
+     * Signature checking is then skipped for those releases and recorded as such;
+     * STABLE always requires valid platform signatures, and the malware scan is
+     * never relaxed. Meant for the period before code-signing is in place.
+     */
+    public bool $allowUnsignedTestChannels = false;
     public string $gpgKeyring = '';
     public string $expectedPublisher = 'Livezen Technologies (Pvt) Ltd';
 

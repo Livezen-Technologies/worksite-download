@@ -15,6 +15,19 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ### Added
 
+- **`scripts/publish-release.mjs`**, the pipeline side of publishing. It
+  creates the release, writes the changelog, signs and posts the CI build
+  attestation (Ed25519 over the same canonical JSON the server verifies),
+  uploads every installer over tus, waits for scan and checks, and submits
+  for testing. QA, approval and publishing stay with people. No dependencies.
+- **`spark uc:create-ci-client "<name>" <token-file>`** — a CI API client with
+  the CI defaults plus `release.edit`, never `release.publish`; the one-time
+  token is written to a file (600), not printed.
+- **`updatecenter.allowUnsignedTestChannels`** (default off). On BETA, DEV and
+  INTERNAL, signature checking is skipped and recorded as "Not checked:
+  unsigned builds are allowed on the … channel"; the checklist shows it as
+  skipped. STABLE always requires valid signatures; the malware scan is never
+  relaxed. For the period before code signing is in place.
 - **`spark uc:create-admin <email> "<name>"`** — creates the first Super Admin
   on the server, asking for the password at a hidden prompt. There was no way
   to make one in production: the seeders create no users, `uc:demo` refuses in
