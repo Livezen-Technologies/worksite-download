@@ -13,6 +13,27 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+### Added
+
+- **`spark uc:create-admin <email> "<name>"`** — creates the first Super Admin
+  on the server, asking for the password at a hidden prompt. There was no way
+  to make one in production: the seeders create no users, `uc:demo` refuses in
+  production, and every other path to a staff account needs an existing admin.
+
+### Fixed
+
+- **Migrations failed on MySQL/MariaDB.** The seven-column unique key on the
+  daily download analytics generated an index name longer than the 64-character
+  limit, so `migrate --all` stopped at `CreateDistributionTables`. SQLite, where
+  the tests run, takes any length. `SchemaHelper` now shortens a key name over
+  60 characters (prefix plus a hash) and leaves every other name unchanged.
+- **Every error page was a 500.** `MetricsExceptionHandler` extended
+  CodeIgniter's `ExceptionHandler`, which is `final` in 4.7, so drawing any 404
+  or error was a fatal error. It now wraps the default handler.
+
+Found deploying to download.worksuitecloud.com (native: nginx, PHP-FPM,
+MariaDB, Redis, Garage for S3 storage, Vault Transit for the response key).
+
 ## [0.3.0] - 2026-10-03
 
 ### Added
