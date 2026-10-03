@@ -205,6 +205,7 @@ class ProcessPackageRevisionJob implements JobInterface
                     $db->table('release_package_revisions')->where('id', $previous['id'])->update(['status' => 'READY']);
                 }
                 $db->table('releases')->where('id', $release['id'])->set('build_revision', 'build_revision - 1', false)->update();
+                \App\Libraries\Metrics::count('signing_refused');
                 $this->save(['status' => 'REJECTED', 'reject_code' => 'SIGNING_REFUSED']);
                 $this->step('ready', 'failed', $e->getMessage());
 

@@ -84,6 +84,15 @@ class UpdateCenter extends BaseConfig
     public string $gpgKeyring = '';
     public string $expectedPublisher = 'Livezen Technologies (Pvt) Ltd';
 
+    /**
+     * Daily write-once export target (§13.3): name of a storage_providers row on a
+     * bucket with Object Lock. Empty = writable/exports (development only).
+     */
+    public string $exportProvider = '';
+
+    /** Bearer token for GET /metrics (Prometheus scrape, §13.4); empty ref = endpoint disabled. */
+    public string $metricsTokenRef = 'UC_METRICS_TOKEN';
+
     /** Rate limits: set false to disable (tests). */
     public bool $rateLimitEnabled = true;
 

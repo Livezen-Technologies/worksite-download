@@ -38,6 +38,7 @@ class Filters extends BaseFilters
         'perm'          => \App\Filters\PermissionFilter::class,
         'rl'            => \App\Filters\RateLimitFilter::class,
         'secheaders'    => \App\Filters\SecurityHeadersFilter::class,
+        'metrics'       => \App\Filters\MetricsFilter::class,
     ];
 
     /**
@@ -81,6 +82,7 @@ class Filters extends BaseFilters
         ],
         'after' => [
             'secheaders',
+            'metrics',
         ],
     ];
 

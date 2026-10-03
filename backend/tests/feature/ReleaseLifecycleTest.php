@@ -226,6 +226,41 @@ final class ReleaseLifecycleTest extends UcTestCase
         $this->assertSame(422, $s);
     }
 
+    private function spark(string $cmd): string
+    {
+        \CodeIgniter\Test\Filters\CITestStreamFilter::registration();
+        \CodeIgniter\Test\Filters\CITestStreamFilter::addOutputFilter();
+        \CodeIgniter\Test\Filters\CITestStreamFilter::$buffer = '';
+        try {
+            command($cmd);
+        } finally {
+            \CodeIgniter\Test\Filters\CITestStreamFilter::removeOutputFilter();
+        }
+
+        return (string) preg_replace('/\e\[[\d;]*m/', '', \CodeIgniter\Test\Filters\CITestStreamFilter::$buffer);
+    }
+
+    /** §13.3 restore drill: manifest signature + storage objects re-hashed against the records. */
+    public function testVerifyReleaseCommand(): void
+    {
+        $id = $this->createReadyRelease('2.7.0', 27001);
+        $this->publish($id);
+        $out = $this->spark('uc:verify-release ' . $id);
+        $this->assertStringContainsString('signature OK', $out);
+        $this->assertStringContainsString('Release 2.7.0 verified.', $out);
+
+        // Tamper with one stored object → detected.
+        $db  = db_connect();
+        $rev = $db->table('release_package_revisions')->where('status', 'READY')->where('file_name', 'WorkSuite-2.7.0.AppImage')->get()->getRowArray();
+        $tmp = tempnam(sys_get_temp_dir(), 'tamper');
+        file_put_contents($tmp, 'not the original bytes');
+        \App\Libraries\Storage\StorageFactory::fromRow($db->table('storage_providers')->where('id', $rev['storage_provider_id'])->get()->getRowArray())->putFile($rev['storage_object_key'], $tmp);
+        @unlink($tmp); // the local provider may move the file into place
+        $out = $this->spark('uc:verify-release ' . $id);
+        $this->assertStringContainsString('HASH MISMATCH', $out);
+        $this->assertStringContainsString('FAILED verification', $out);
+    }
+
     public function testSupersedeAndPauseFallback(): void
     {
         $a = $this->createReadyRelease('2.6.5', 26505);

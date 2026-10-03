@@ -10,7 +10,7 @@ Current version: see [`VERSION`](VERSION) · changes: [`CHANGELOG.md`](CHANGELOG
 ```
 backend/          CodeIgniter 4.7 API, workers, scheduler, signing-service entry (signing/)
 frontend/         React 19 + TypeScript + Tailwind v4 — public site, user portal, admin portal
-sdks/             @worksuite/bugtrace-web and the tenant BugTraceReporter reference
+sdks/             Bug Trace SDKs: web, Electron main process, React Native, tenant PHP reporter
 docker/ nginx/    Container images, compose stack, nginx + CDN edge worker
 openapi/          OpenAPI 3.1 description (served at /api-docs)
 docs/             API contract, versioning
@@ -86,7 +86,12 @@ php scripts/version.php check
 | `uc:scheduler [--loop]` | Scheduled publish, rollout auto-advance / auto-pause, campaign reminders, fleet evaluation, health + storage probes, analytics roll-ups, retention |
 | `uc:health` | Component health (non-zero exit when DOWN) |
 | `uc:keys [--register-dev]` | Public keys in use |
+| `uc:export [--date=]` | Daily write-once export of configuration, changelogs, manifests and audit log (§13.3) |
+| `uc:verify-release <id>` | Verify a release manifest signature and re-hash its packages from storage |
 | `uc:demo` | Demo data (never in production) |
+
+Backups, the restore drill and Prometheus monitoring (`GET /metrics`, alert rules) are covered in
+[docs/operations.md](docs/operations.md).
 
 ## Versioning
 

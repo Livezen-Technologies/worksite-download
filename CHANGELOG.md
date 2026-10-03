@@ -25,6 +25,20 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   `WorkSuiteBugTrace` native module, ANR/app hangs (native + JS-thread
   watchdog), out-of-memory termination detection, shake-to-report and
   post-crash sheet hooks, AsyncStorage queue.
+- **Monitoring (§13.4, FR-UC-OPS-05)** — `GET /metrics` Prometheus
+  exporter (bearer token, internal networks only): request rate, 5xx and
+  latency histogram per route group (Redis-backed, unhandled exceptions
+  included), queue backlog/age, upload rejections and stuck jobs, resolver
+  failures, update events, webhook failures, component health, signing /
+  signature failures; Prometheus config and alert rules for every §13.4
+  signal (`docker/monitoring`, compose profile `monitoring`).
+- **Backups (§13.3, FR-UC-OPS-04)** — `uc:export` daily write-once export
+  of configuration, changelogs, manifests and incremental audit log (secrets
+  never exported, existing objects never overwritten), scheduled by
+  `uc:scheduler`; `scripts/backup-db.sh` (encrypted full dump),
+  `scripts/ship-binlogs.sh` (15 min RPO), `scripts/restore-drill.sh`;
+  `uc:verify-release` re-hashes a release's packages from storage and checks
+  the manifest signature; runbook in `docs/operations.md`.
 - CI builds, typechecks and tests all three SDKs; `scripts/version.php`
   keeps their versions in sync.
 
