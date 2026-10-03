@@ -54,7 +54,7 @@ export function AppPage() {
         )}
         {latest ? (
           latest.packages.length ? (
-            <PlatformDownloads slug={app.slug} packages={latest.packages} requirements={latest.requirements} />
+            <PlatformDownloads slug={app.slug} packages={latest.packages} requirements={latest.requirements} channel={isBeta ? 'BETA' : 'STABLE'} />
           ) : (
             <Alert tone="warn">{latest.unavailable_message ?? 'Downloads for this version are not available.'}</Alert>
           )
@@ -69,7 +69,7 @@ export function AppPage() {
             Beta {beta.version}
           </h2>
           <p className="mb-3 text-[12.5px] text-muted">Early access to what comes next. Beta installers are not code-signed yet; once installed, a Beta updates itself to each new Beta.</p>
-          <PlatformDownloads slug={app.slug} packages={beta.packages} requirements={beta.requirements} />
+          <PlatformDownloads slug={app.slug} packages={beta.packages} requirements={beta.requirements} channel="BETA" idPrefix="beta-platforms" />
         </section>
       )}
 

@@ -131,7 +131,7 @@ function DownloadButton({ pkg, href, primary }: { pkg: PublicPackage; href: stri
 }
 
 /** Platform cards: every platform × arch × package type with sizes and arch guidance (P2). */
-export function PlatformDownloads({ slug, packages, useLatestResolver = true, requirements, idPrefix = 'platforms' }: { slug: string; packages: PublicPackage[]; useLatestResolver?: boolean; requirements?: Record<string, string[]>; idPrefix?: string }) {
+export function PlatformDownloads({ slug, packages, useLatestResolver = true, requirements, idPrefix = 'platforms', channel = 'STABLE' }: { slug: string; packages: PublicPackage[]; useLatestResolver?: boolean; requirements?: Record<string, string[]>; idPrefix?: string; channel?: string }) {
   const groups = groupByPlatform(packages);
   if (!groups.length) return <p className="text-[13px] text-subtle">No downloads are available for this version.</p>;
   return (
@@ -149,7 +149,7 @@ export function PlatformDownloads({ slug, packages, useLatestResolver = true, re
             <ul className="flex flex-col gap-2">
               {g.packages.map((p, i) => (
                 <li key={p.id}>
-                  <DownloadButton pkg={p} primary={i === 0 || (g.platform === 'macos' && p.recommended && g.packages[i - 1]?.architecture !== p.architecture)} href={useLatestResolver ? latestResolverUrl(slug, p) : p.download_url} />
+                  <DownloadButton pkg={p} primary={i === 0 || (g.platform === 'macos' && p.recommended && g.packages[i - 1]?.architecture !== p.architecture)} href={useLatestResolver ? latestResolverUrl(slug, p, channel) : p.download_url} />
                 </li>
               ))}
             </ul>
