@@ -234,6 +234,7 @@ paths:
         - { name: version, in: query, schema: { type: string } }
         - { name: build, in: query, schema: { type: integer } }
         - { name: edition, in: query, schema: { type: string, enum: [free, business, enterprise] } }
+        - { name: installed_edition, in: query, description: "Edition currently installed; when it differs from the licensed edition the response carries edition_switch (FR-TEN-UPD-17)", schema: { type: string, enum: [free, business, enterprise] } }
         - { name: channel, in: query, schema: { type: string } }
       responses: { "200": { description: Signed server update response }, "401": { $ref: "#/components/responses/Error" } }
   /api/v1/server/downloads/grant:

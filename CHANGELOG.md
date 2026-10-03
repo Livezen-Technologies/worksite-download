@@ -13,6 +13,20 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-03
+
+### Added
+
+- **Edition switch (FR-TEN-UPD-17, AC-C54)** — `GET /api/v1/server/update`
+  accepts `installed_edition`; when it differs from the licensed edition the
+  signed response carries `edition_switch` with the same version's package
+  for the new edition (`UPGRADE` / `DOWNGRADE`, data kept) and a download grant.
+
+### Fixed
+
+- Backend test suite failed (9 tests) without an encryption key configured;
+  `phpunit.dist.xml` now sets a test-only key.
+
 ## [0.1.0] - 2026-09-28
 
 First build of the Update Distribution Portal from
@@ -116,5 +130,6 @@ B1 Bug Trace core).
   never executed; storage credentials are resolved from the secret service
   by reference only; telemetry stores no IP addresses or user identities.
 
-[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Livezen-Technologies/worksite-download/releases/tag/v0.1.0

@@ -189,6 +189,7 @@ class ServerUpdateService
                 $package = ['id' => $pkgRow['public_id'], 'revision_id' => $pkgRow['rev_public_id'], 'edition' => strtolower($pkgRow['edition']), 'scope' => $pkgRow['scope'], 'file_name' => $pkgRow['file_name'], 'size' => (int) $pkgRow['size_bytes'], 'sha256' => $pkgRow['sha256'], 'package_json' => $meta['package_json'] ?? null, 'download_grant' => $grant['grant']];
             }
         }
+        $switch = $this->editionSwitch($inst, $q, $edition, $curRow, $resolver);
         $meta = $offered ? $db->table('release_server_meta')->where('release_id', $offered['id'])->get()->getRowArray() : null;
         $cl   = $offered ? (new ChangelogService())->get((int) $offered['id']) : null;
         $fleet = null;
@@ -223,6 +224,7 @@ class ServerUpdateService
             'release_notes_url'  => $offered ? rtrim($cfg->publicBaseUrl, '/') . '/apps/' . $app['slug'] . '/releases/' . $offered['version'] : null,
             'release_manifest_url' => $offered ? '/api/v1/releases/' . $offered['public_id'] . '/manifest' : null,
             'fleet'              => $fleet,
+            'edition_switch'     => $switch,
             'issued_at'          => gmdate('Y-m-d\TH:i:s\Z'),
             'expires_at'         => gmdate('Y-m-d\TH:i:s\Z', time() + $cfg->updateResponseTtl),
         ];
@@ -231,6 +233,35 @@ class ServerUpdateService
     }
 
     /** FR-UC-SRV-13: releases to apply in order when below min_from_version. */
+    /**
+     * Edition switch (FR-TEN-UPD-17, AC-C54): after a license edition change the
+     * installation is offered the package of its *current* version for the new
+     * edition. Downgrades disable paid modules but keep their data (tenant side).
+     */
+    public function editionSwitch(array $inst, array $q, string $edition, ?array $curRow, UpdateResolverService $resolver): ?array
+    {
+        $installed = strtoupper(trim((string) ($q['installed_edition'] ?? '')));
+        if ($installed === '' || $installed === $edition || ! isset(self::RANK[$installed]) || ! $curRow
+            || ! in_array($curRow['status'], ['PUBLISHED', 'SUPERSEDED'], true)) {
+            return null;
+        }
+        $pkgRow = $resolver->packageFor($curRow, 'server', 'any', 'zip', $edition);
+        if (! $pkgRow) {
+            return null;
+        }
+        $grant = $resolver->issueGrant($pkgRow, $inst['installation_id'], 6 * 3600);
+
+        return [
+            'from'      => strtolower($installed),
+            'to'        => strtolower($edition),
+            'direction' => (self::RANK[$edition] ?? 0) >= self::RANK[$installed] ? 'UPGRADE' : 'DOWNGRADE',
+            'version'   => $curRow['version'],
+            'release_id' => $curRow['public_id'],
+            'package'   => ['id' => $pkgRow['public_id'], 'revision_id' => $pkgRow['rev_public_id'], 'edition' => strtolower($pkgRow['edition']), 'file_name' => $pkgRow['file_name'], 'size' => (int) $pkgRow['size_bytes'], 'sha256' => $pkgRow['sha256'], 'download_grant' => $grant['grant']],
+            'keeps_data' => true,
+        ];
+    }
+
     public function upgradeChain(array $app, array $channel, string $from, array $target): array
     {
         $db   = db_connect();

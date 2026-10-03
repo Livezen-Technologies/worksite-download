@@ -45,6 +45,8 @@
     <php>
         <server name="app.baseURL" value="http://example.com/"/>
         <server name="CODEIGNITER_SCREAM_DEPRECATIONS" value="0"/>
+        <!-- Test-only encryption key (never used outside the test suite) -->
+        <env name="encryption.key" value="hex2bin:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"/>
         <!-- Directory containing phpunit.xml -->
         <const name="HOMEPATH" value="./"/>
         <!-- Directory containing the Paths config file -->
