@@ -15,6 +15,13 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ### Added
 
+- **A switch to turn two-factor authentication off**
+  (`updatecenter.mfaDisabled = true`, off by default). With it on, signing in
+  needs only the password, staff are not made to enrol, and publishing,
+  withdrawing, rollout changes and the other critical actions ask for no
+  step-up code. API clients are unaffected: a CI client still cannot publish in
+  production, and Stable still needs two different approvers. Turned on at the
+  owner's request (2026-10-03).
 - **`scripts/publish-release.mjs`**, the pipeline side of publishing. It
   creates the release, writes the changelog, signs and posts the CI build
   attestation (Ed25519 over the same canonical JSON the server verifies),

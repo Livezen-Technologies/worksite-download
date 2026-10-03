@@ -142,7 +142,7 @@ class AuthService
         }
         $db->table('users')->where('id', $user['id'])->update(['failed_logins' => 0, 'locked_until' => null]);
 
-        $mfaRequired = (bool) $user['mfa_enabled'];
+        $mfaRequired = (bool) $user['mfa_enabled'] && ! config('UpdateCenter')->mfaDisabled;
         $session     = $this->createSession((int) $user['id'], $ip, $ua, $mfaRequired);
         if (! $mfaRequired) {
             $this->completeLogin($user);

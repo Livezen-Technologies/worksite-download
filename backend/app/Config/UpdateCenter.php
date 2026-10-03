@@ -34,6 +34,15 @@ class UpdateCenter extends BaseConfig
     /** MFA required for staff (always true in production). */
     public bool $requireStaffMfa = false;
 
+    /**
+     * Two-factor authentication switched off for every interactive user
+     * (`updatecenter.mfaDisabled = true`): sign-in needs only the password,
+     * staff need not enrol, and critical actions ask for no step-up. API
+     * clients are unaffected — a CI client still cannot publish in
+     * production. The owner's decision (2026-10-03); off by default.
+     */
+    public bool $mfaDisabled = false;
+
     /** Require CI attestation for signing (always true in production). */
     public bool $requireAttestation = false;
 
