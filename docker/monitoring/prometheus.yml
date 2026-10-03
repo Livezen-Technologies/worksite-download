@@ -1,0 +1,17 @@
+# Prometheus scrape configuration for the Update Center (§13.4).
+# Production: point `targets` at each update-web node and mount the real token
+# (same value as the UC_METRICS_TOKEN secret of update-api).
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files: [/etc/prometheus/alerts.yml]
+
+scrape_configs:
+  - job_name: update-center
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/metrics_token
+    static_configs:
+      - targets: ["update-web:80"]

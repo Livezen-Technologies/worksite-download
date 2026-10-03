@@ -35,6 +35,7 @@ class Scheduler extends BaseCommand
         'bugtrace_alerts'   => 5,
         'bugtrace_rollup'   => 60,
         'bugtrace_daily'    => 1440,
+        'export_daily'      => 1440,
     ];
 
     public function run(array $params)
@@ -165,6 +166,14 @@ class Scheduler extends BaseCommand
     private function taskBugtraceDaily(): array
     {
         return array_merge($this->spark('bugtrace:alerts', ['digest' => true]), $this->spark('bugtrace:retention'));
+    }
+
+    /** §13.3: configuration, changelogs, manifests and audit logs to write-once storage. */
+    private function taskExportDaily(): array
+    {
+        $r = (new \App\Services\ExportService())->run();
+
+        return array_map(static fn ($o) => "{$o['status']} {$o['key']} ({$o['rows']} rows)", $r['objects']);
     }
 
     /** @param array<string, mixed> $options */

@@ -105,6 +105,14 @@ final class ServerAndTenantTest extends UcTestCase
         // Update events update the registry.
         $this->withHeaders(['Authorization' => $lic])->withBodyFormat('json')->post('api/v1/server/update-events', ['events' => [['event_id' => 'e1', 'type' => 'completed', 'from' => '3.3.2', 'to' => '3.4.0']]])->assertStatus(202);
         $this->seeInDatabase('server_installations', ['installation_id' => 'inst_BIZ1', 'version' => '3.4.0', 'last_run_status' => 'COMPLETED']);
+
+        // AC-C54 / FR-TEN-UPD-17: after a Free → Business license change the same version's Business package is offered.
+        $sw = $this->json($this->withHeaders(['Authorization' => $lic])->get('api/v1/server/update?version=3.4.0&edition=business&installed_edition=free'))['edition_switch'];
+        $this->assertSame(['free', 'business', 'UPGRADE', '3.4.0', 'business'], [$sw['from'], $sw['to'], $sw['direction'], $sw['version'], $sw['package']['edition']]);
+        $this->assertNotEmpty($sw['package']['download_grant']);
+        // Downgrade keeps data; no switch when the installed edition already matches.
+        $this->assertSame('DOWNGRADE', $this->json($this->withHeaders(['Authorization' => $lic])->get('api/v1/server/update?version=3.4.0&edition=free&installed_edition=business'))['edition_switch']['direction']);
+        $this->assertNull($this->json($this->withHeaders(['Authorization' => $lic])->get('api/v1/server/update?version=3.4.0&edition=business&installed_edition=business'))['edition_switch']);
     }
 
     public function testTenantPolicyTokenChangesChannelAndMinimum(): void

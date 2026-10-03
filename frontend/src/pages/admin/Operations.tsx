@@ -220,7 +220,7 @@ function ReleaseMiniTable({ rows, tab, extra }: { rows: AdminRelease[]; tab: str
 // ---------------------------------------------------------------- Storage & health (A5)
 
 function HealthTable({ components }: { components: HealthComponent[] }) {
-  const NAME: Record<string, string> = { api: 'API', database: 'Database (MariaDB)', redis: 'Redis', storage: 'Object Storage', cdn: 'CDN', signing: 'Signing Service (KMS)', queue: 'Queue workers' };
+  const NAME: Record<string, string> = { api: 'API', database: 'Database (MariaDB)', redis: 'Redis', storage: 'Object Storage', cdn: 'CDN', signing: 'Signing Service (KMS)', queue: 'Queue workers', export: 'Daily export (write-once)' };
   return (
     <Table label="Component health">
       <thead>

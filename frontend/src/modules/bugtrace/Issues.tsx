@@ -237,6 +237,23 @@ function LinkDialog({ kind, onClose, issue }: { kind: 'github' | 'task'; onClose
   );
 }
 
+function SymbolicationNote({ issue }: { issue: IssueDetail }) {
+  const native = issue.frames.some((f) => f.module);
+  const source = native ? 'debug symbols' : 'source map';
+  switch (issue.symbolication) {
+    case 'partial':
+      return <span className="text-warn">Partly symbolicated: some {source} are missing for {issue.last_release}</span>;
+    case 'missing':
+      return <span className="text-warn">Not symbolicated: upload {source} for {issue.last_release}</span>;
+    case 'pending':
+      return <span className="text-subtle">Minidump waiting for processing</span>;
+    case 'n/a':
+      return null;
+    default:
+      return <span className="text-ok">✓ symbolicated with {source} {issue.last_release}</span>;
+  }
+}
+
 function StackTrace({ issue }: { issue: IssueDetail }) {
   const [all, setAll] = useState(false);
   const frames = all ? issue.frames : issue.frames.filter((f) => f.in_app);
@@ -244,7 +261,7 @@ function StackTrace({ issue }: { issue: IssueDetail }) {
     <Card>
       <CardHeader
         title="Stack trace"
-        sub={<span className="text-ok">✓ symbolicated with source map {issue.last_release}</span>}
+        sub={<SymbolicationNote issue={issue} />}
         actions={
           <button type="button" className="link text-[11.5px]" onClick={() => setAll((a) => !a)}>
             {all ? 'in-app frames only' : 'show all frames'}
@@ -255,7 +272,10 @@ function StackTrace({ issue }: { issue: IssueDetail }) {
         {frames.map((f, i) => (
           <li key={i} className="border-b border-line py-1.5 last:border-0">
             <div className="flex justify-between gap-3">
-              <span className={cx(f.in_app ? 'text-ink' : 'text-subtle')}>{f.function}</span>
+              <span className={cx(f.in_app ? 'text-ink' : 'text-subtle')}>
+                {f.module && !f.file ? <span className="text-subtle">{f.module} · </span> : null}
+                {f.function ?? '??'}
+              </span>
               <span className="truncate text-right text-subtle">
                 {f.file}
                 {f.line != null ? `:${f.line}` : ''}

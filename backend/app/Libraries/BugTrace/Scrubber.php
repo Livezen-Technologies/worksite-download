@@ -473,7 +473,7 @@ final class Scrubber
                     $f['file'] ??= $this->scrubUrl(mb_substr($fr[$k], 0, 500));
                 }
             }
-            foreach (['function', 'module', 'package', 'instruction_addr', 'symbol_addr', 'image_addr', 'debug_id', 'platform'] as $k) {
+            foreach (['function', 'module', 'package', 'instruction_addr', 'module_offset', 'symbol_addr', 'image_addr', 'debug_id', 'platform'] as $k) {
                 if (isset($fr[$k]) && is_scalar($fr[$k])) {
                     $f[$k] = mb_substr((string) $fr[$k], 0, 300);
                 }

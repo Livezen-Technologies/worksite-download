@@ -266,6 +266,9 @@ class IssueService
                 if (isset($f['context'])) {
                     $frame['context'] = $f['context'];
                 }
+                if (isset($f['module'])) {
+                    $frame['module'] = $f['module']; // native module or JVM class
+                }
                 if (! empty($f['symbolicated'])) {
                     $frame['symbolicated'] = true;
                 }

@@ -36,3 +36,6 @@ $routes->group('', ['namespace' => 'App\Controllers\PublicSite', 'filter' => 'au
     $routes->get('_dev-cdn/(:any)', 'WebController::devCdn/$1');
     $routes->put('_dev-storage/part/(:segment)/(:num)', 'WebController::devPart/$1/$2');
 });
+
+// Prometheus scrape endpoint (§13.4) — bearer token, see MetricsController.
+$routes->get('metrics', 'MetricsController::index');
