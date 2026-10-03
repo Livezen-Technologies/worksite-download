@@ -79,7 +79,7 @@ export function AppHero({ eyebrow, title, subtitle, children, art = true }: { ey
 
 // ---------------------------------------------------------------- LatestVersion
 
-export function LatestVersion({ app, release, breadcrumb }: { app: AppSummary; release: PublicReleaseDetail | null; breadcrumb?: ReactNode }) {
+export function LatestVersion({ app, release, breadcrumb, label = 'Latest stable' }: { app: AppSummary; release: PublicReleaseDetail | null; breadcrumb?: ReactNode; label?: string }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="flex items-center gap-4">
@@ -92,7 +92,7 @@ export function LatestVersion({ app, release, breadcrumb }: { app: AppSummary; r
       {release && (
         <dl className="flex gap-8">
           <div>
-            <dt className="label-caps">Latest stable</dt>
+            <dt className="label-caps">{label}</dt>
             <dd className="font-mono text-[18px] font-semibold">{release.version}</dd>
           </div>
           <div>

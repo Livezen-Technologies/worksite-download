@@ -15,6 +15,13 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ### Added
 
+- **Beta can be public.** A channel an administrator marks public is visible
+  to everyone: its downloads (`/download/<app>/beta/…`), release notes,
+  changelog and update checks. The application page offers the current Beta —
+  labelled "Latest beta", with a note that Beta installers are not code-signed
+  yet — when there is no Stable release, and as its own section when it is
+  newer than Stable. The "every installer is code-signed" line shows only for
+  Stable.
 - **A switch to turn two-factor authentication off**
   (`updatecenter.mfaDisabled = true`, off by default). With it on, signing in
   needs only the password, staff are not made to enrol, and publishing,

@@ -22,12 +22,16 @@ export function AppPage() {
   const { slug = '' } = useParams();
   const q = useQuery({ queryKey: publicKeys.app(slug), queryFn: () => publicApi.app(slug) });
   const app = q.data;
-  const latest = app?.latest ?? null;
+  const stable = app?.latest ?? null;
+  const beta = app?.beta ?? null;
+  // With no Stable release yet, the Beta is what the page offers, labelled so.
+  const latest = stable ?? beta;
+  const isBeta = !stable && !!beta;
   useHead(
     app
       ? {
           title: appTitle(app),
-          description: `${app.description}${latest ? ` Latest stable: ${latest.version}.` : ''}`,
+          description: `${app.description}${latest ? ` Latest ${isBeta ? 'beta' : 'stable'}: ${latest.version}.` : ''}`,
           path: `/apps/${app.slug}`,
           jsonLd: softwareJsonLd(app, latest),
           feeds: { rss: `/apps/${app.slug}/changelog/feed`, atom: `/apps/${app.slug}/changelog/atom`, title: `${app.name} releases` },
@@ -38,10 +42,16 @@ export function AppPage() {
   const page = app.page;
   return (
     <Container className="py-8">
-      <LatestVersion app={app} release={latest} breadcrumb={<Breadcrumb items={[{ label: 'Applications', to: '/apps' }, { label: app.name.replace(/^WorkSuite\s+/, '') }]} />} />
+      <LatestVersion app={app} release={latest} label={isBeta ? 'Latest beta' : 'Latest stable'} breadcrumb={<Breadcrumb items={[{ label: 'Applications', to: '/apps' }, { label: app.name.replace(/^WorkSuite\s+/, '') }]} />} />
       {page.description_html && <div className="prose-uc mt-3 max-w-3xl text-muted" dangerouslySetInnerHTML={{ __html: page.description_html }} />}
 
       <div className="mt-6">
+        {isBeta && (
+          <Alert tone="warn" className="mb-3" title={`Beta ${latest!.version}`}>
+            There is no stable release of {app.name} yet, so this is the Beta: early access, for testing. Beta installers are not code-signed yet — Windows SmartScreen and macOS will warn the
+            first time you open one. Once installed, a Beta updates itself to each new Beta.
+          </Alert>
+        )}
         {latest ? (
           latest.packages.length ? (
             <PlatformDownloads slug={app.slug} packages={latest.packages} requirements={latest.requirements} />
@@ -52,6 +62,16 @@ export function AppPage() {
           <Alert>There is no stable release of {app.name} yet.</Alert>
         )}
       </div>
+
+      {stable && beta && beta.packages.length > 0 && (
+        <section className="card mt-4 p-5" aria-labelledby="beta-h">
+          <h2 id="beta-h" className="mb-1 text-[14px] font-bold">
+            Beta {beta.version}
+          </h2>
+          <p className="mb-3 text-[12.5px] text-muted">Early access to what comes next. Beta installers are not code-signed yet; once installed, a Beta updates itself to each new Beta.</p>
+          <PlatformDownloads slug={app.slug} packages={beta.packages} requirements={beta.requirements} />
+        </section>
+      )}
 
       {latest && (
         <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
@@ -98,7 +118,7 @@ export function AppPage() {
                 </li>
               )}
             </ul>
-            <p className="mt-3 text-[11.5px] text-subtle">Every installer is code-signed by Livezen Technologies (Pvt) Ltd.</p>
+            {!isBeta && <p className="mt-3 text-[11.5px] text-subtle">Every installer is code-signed by Livezen Technologies (Pvt) Ltd.</p>}
             {app.channels.some((c) => c.code === 'BETA') && (
               <p className="mt-2 text-[11.5px] text-subtle">
                 Want early access?{' '}
