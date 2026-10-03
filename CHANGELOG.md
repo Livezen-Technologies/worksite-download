@@ -38,7 +38,8 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   `uc:scheduler`; `scripts/backup-db.sh` (encrypted full dump),
   `scripts/ship-binlogs.sh` (15 min RPO), `scripts/restore-drill.sh`;
   `uc:verify-release` re-hashes a release's packages from storage and checks
-  the manifest signature; runbook in `docs/operations.md`.
+  the manifest signature; the health page shows the age of the last export
+  (DEGRADED after a missed day); runbook in `docs/operations.md`.
 - **Native symbolication (FR-BT-ING-04, AC-C61/C62)** — Breakpad `.sym`
   lookup for desktop (Windows/macOS/Linux), iOS and Android NDK frames
   (CI converts PDB/dSYM/ELF with `dump_syms`; upload validates the `MODULE`

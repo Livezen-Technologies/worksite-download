@@ -61,6 +61,18 @@ class HealthService
             return [true, "Backlog {$s['backlog']} · failed 24 h: {$s['failed_24h']}"];
         });
 
+        // §13.3: the daily write-once export must not silently stop.
+        $out[] = $this->timed('export', static function () {
+            $raw  = db_connect()->table('settings')->where('key', 'export.last_run')->get()->getRow('value');
+            $last = $raw ? json_decode((string) $raw, true) : null;
+            if (! is_array($last) || empty($last['date'])) {
+                return [config('UpdateCenter')->isProduction() ? null : true, 'No export yet (uc:export runs daily)'];
+            }
+            $age = (int) floor((time() - strtotime($last['date'] . ' 00:00:00 UTC')) / 86400);
+
+            return [$age <= 1 ? true : null, "Last export {$last['date']} · " . count((array) ($last['objects'] ?? [])) . ' objects'];
+        });
+
         if ($persist) {
             $db = db_connect();
             foreach ($out as $c) {
