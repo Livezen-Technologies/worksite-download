@@ -261,6 +261,40 @@ final class ReleaseLifecycleTest extends UcTestCase
         $this->assertStringContainsString('FAILED verification', $out);
     }
 
+    /** §2.5 tenant catalog sync + mirror mode (AC-C34 feed, Phase 5 mirrors). */
+    public function testTenantCatalogFeedAndMirror(): void
+    {
+        $id = $this->createReadyRelease('2.7.0', 27001);
+        $this->publish($id);
+        $this->setCookie('uc_session', null);
+        $tenant = $this->makeClient(['release.view'], 'TENANT');
+
+        $feed = $this->json($this->withHeaders($tenant)->get('api/v1/catalog/changes?since=0'));
+        $this->assertContains('release.published', array_column($feed['data'] ?? $feed['changes'] ?? [], 'event'), json_encode($feed));
+
+        $res = $this->withHeaders($tenant)->get('api/v1/catalog/mirror/desktop/stable');
+        $res->assertStatus(200);
+        $m = $this->json($res);
+        $this->assertSame('stable', $m['channel']);
+        $this->assertTrue(\App\Libraries\Signing\Ed25519::verifyDocument($m['channel_manifest'], \App\Services\KeyRegistry::releaseKeys()), 'channel manifest is served as signed');
+        $rel = $m['releases'][0];
+        $this->assertSame('2.7.0', $rel['version']);
+        $this->assertTrue(\App\Libraries\Signing\Ed25519::verifyDocument($rel['release_manifest'], \App\Services\KeyRegistry::releaseKeys()));
+        $this->assertCount(4, $rel['files']);
+        $signed = array_column($rel['release_manifest']['packages'], 'sha256', 'file_name');
+        foreach ($rel['files'] as $f) {
+            $this->assertSame($signed[$f['file_name']], $f['sha256'], 'mirror hashes match the signed manifest');
+        }
+        // Grants redeem to short-lived CDN URLs for the mirror to copy.
+        $g = $this->json($this->withBodyFormat('json')->post('api/v1/downloads/grant', ['grant' => $rel['files'][0]['download_grant']]));
+        $this->assertSame($rel['files'][0]['sha256'], $g['sha256']);
+        $this->assertNotEmpty($g['download_url']);
+
+        // Anonymous callers and non-tenant clients cannot mirror.
+        $this->assertSame(401, $this->withHeaders(['Authorization' => ''])->get('api/v1/catalog/mirror/desktop/stable')->response()->getStatusCode());
+        $this->assertSame(403, $this->withHeaders($this->makeClient(['release.upload']))->get('api/v1/catalog/mirror/desktop/stable')->response()->getStatusCode());
+    }
+
     public function testSupersedeAndPauseFallback(): void
     {
         $a = $this->createReadyRelease('2.6.5', 26505);

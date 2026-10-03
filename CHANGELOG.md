@@ -48,6 +48,11 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   Events waiting for symbols (`missing`/`pending`) are re-symbolicated when
   symbols arrive. Issue detail shows the native module / JVM class and the
   real symbolication state.
+- **Tenant mirror feed (§2.5 mirror mode, Phase 5)** —
+  `GET /api/v1/catalog/mirror/{app}/{channel}` for tenant API clients:
+  signed channel and release manifests verbatim, per-package SHA-256 and
+  7-day download grants so self-hosted / air-gapped tenants can copy
+  packages into their own storage; licensed server editions excluded.
 - CI builds, typechecks and tests all three SDKs; `scripts/version.php`
   keeps their versions in sync.
 

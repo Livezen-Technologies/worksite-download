@@ -158,4 +158,15 @@ class DesktopController extends BaseApiController
 
         return (new TenantEventsService())->changes(max(0, (int) $this->request->getGet('since')), min(500, max(1, (int) ($this->request->getGet('limit') ?? 200))));
     }
+
+    /** GET /catalog/mirror/{app}/{channel} — mirror feed for self-hosted / air-gapped tenants (§2.5). */
+    public function mirror(string $app, string $channel)
+    {
+        if (($this->auth->apiClient['kind'] ?? '') !== 'TENANT' && ! $this->auth->can('release.view')) {
+            throw ApiException::forbidden('Tenant API client required');
+        }
+        $tenant = isset($this->auth->apiClient['tenant_id']) ? 'tenant:' . $this->auth->apiClient['tenant_id'] : null;
+
+        return (new \App\Services\MirrorService())->index($app, $channel, (int) ($this->request->getGet('keep') ?? 3), $tenant);
+    }
 }
