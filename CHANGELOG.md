@@ -13,6 +13,8 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-06
+
 ### Added
 
 - **Sparkle appcasts for macOS apps that update through Sparkle** — WorkSuite
@@ -263,7 +265,8 @@ B1 Bug Trace core).
   never executed; storage credentials are resolved from the secret service
   by reference only; telemetry stores no IP addresses or user identities.
 
-[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Livezen-Technologies/worksite-download/releases/tag/v0.1.0
