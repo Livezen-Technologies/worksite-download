@@ -173,6 +173,24 @@ paths:
       security: [{}, { tenantPolicy: [] }]
       parameters: [{ name: app, in: path, required: true, schema: { type: string } }, { name: channel, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ChannelManifest" } } } }, "403": { $ref: "#/components/responses/Error" } }
+  /api/v1/apps/{app}/channels/{channel}/appcast.xml:
+    get:
+      tags: [Desktop]
+      summary: Sparkle appcast for macOS apps that update through Sparkle (docs/sparkle.md)
+      description: >-
+        What an anonymous macOS update check on the channel is offered, as one Sparkle item: build number as
+        sparkle:version, version as sparkle:shortVersionString, the public download URL as enclosure, with the
+        sparkle:edSignature CI attested (files[].sparkle_ed_signature). Public channels of public apps only.
+      parameters:
+        - { name: app, in: path, required: true, schema: { type: string, example: lk.worksuite.office } }
+        - { name: channel, in: path, required: true, schema: { type: string, example: beta } }
+        - { name: arch, in: query, required: true, schema: { type: string, enum: [arm64, x64] } }
+        - { name: type, in: query, schema: { type: string, enum: [dmg, zip] }, description: "Default: the slot's default type" }
+      responses:
+        "200": { description: RSS 2.0 with the Sparkle namespace, content: { application/rss+xml: { schema: { type: string } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /api/v1/releases/{id}/manifest:
     get: { tags: [Desktop], summary: Signed release manifest, parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: OK } } }
   /api/v1/releases/{id}/state:

@@ -24,9 +24,17 @@
  * release.view, release.create, release.upload, release.file.upload,
  * changelog.manage and release.edit. The key is the base64 libsodium Ed25519
  * secret key whose public half is pinned as a CI_ATTESTATION key (ws-ci-1).
+ *
+ * Sparkle (apps that update on macOS through Sparkle, such as WorkSuite Office):
+ * put the archive's EdDSA signature, as Sparkle's sign_update prints it
+ * (sparkle:edSignature), in <archive>.edsig beside it. It goes into the
+ * attestation as files[].sparkle_ed_signature, where the app's appcast takes it
+ * from. With UC_SPARKLE_PUBLIC_KEY (the app's SUPublicEDKey) it is checked
+ * against the archive first, so a build signed with the wrong key stops here
+ * rather than in every app that would refuse it.
  */
-import { createHash, createPrivateKey, sign } from 'node:crypto';
-import { createReadStream, readFileSync, statSync } from 'node:fs';
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { basename } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -54,6 +62,19 @@ if (!(build > 0)) die('--build must be a positive integer');
 log(`hashing ${files.length} file(s)…`);
 for (const f of files) f.sha256 = await sha256(f.path);
 
+// Sparkle signatures, from <archive>.edsig.
+const SPARKLE_PUBLIC = process.env.UC_SPARKLE_PUBLIC_KEY?.trim();
+for (const f of files) {
+  if (!existsSync(`${f.path}.edsig`)) {
+    if (f.platform === 'macos' && SPARKLE_PUBLIC) die(`${f.name}: no ${f.name}.edsig, and Sparkle refuses an update without one`);
+    continue;
+  }
+  f.sparkle = readFileSync(`${f.path}.edsig`, 'utf8').trim();
+  if (Buffer.from(f.sparkle, 'base64').length !== 64) die(`${f.name}.edsig is not a base64 Ed25519 signature`);
+  if (SPARKLE_PUBLIC && !verifySparkle(readFileSync(f.path), f.sparkle, SPARKLE_PUBLIC)) die(`${f.name}: the Sparkle signature does not match UC_SPARKLE_PUBLIC_KEY`);
+  log(`${f.name}: Sparkle signature${SPARKLE_PUBLIC ? ' checked' : ''}`);
+}
+
 // 1. Release (idempotent for the same app/channel/version/build).
 const release = await api('POST', '/api/v1/admin/releases', {
   app_id: args.app, version: args.version, build, channel: args.channel || 'BETA',
@@ -72,7 +93,7 @@ await api('PUT', `/api/v1/admin/releases/${release.id}/changelog`, {
 // 3. Attestation before upload, so processing matches every file against it.
 const payload = {
   app_id: args['app-id'], version: args.version.replace(/^v/, ''), build,
-  files: files.map((f) => ({ name: f.name, sha256: f.sha256, size: f.size })),
+  files: files.map((f) => ({ name: f.name, sha256: f.sha256, size: f.size, ...(f.sparkle ? { sparkle_ed_signature: f.sparkle } : {}) })),
   pipeline: args.pipeline || 'local', commit: args.commit || 'unknown',
 };
 const att = await api('POST', `/api/v1/admin/releases/${release.id}/attestation`, {
@@ -179,6 +200,14 @@ function signEd25519(message, libsodiumSecretB64) {
   if (sk.length !== 64) die('the CI key must be a 64-byte libsodium Ed25519 secret key (base64)');
   const key = createPrivateKey({ key: { kty: 'OKP', crv: 'Ed25519', d: b64url(sk.subarray(0, 32)), x: b64url(sk.subarray(32)) }, format: 'jwk' });
   return b64url(sign(null, Buffer.from(message, 'utf8'), key));
+}
+
+/** Sparkle's check: Ed25519 over the whole archive, against SUPublicEDKey (base64 of the raw 32-byte key). */
+function verifySparkle(bytes, signatureB64, publicB64) {
+  const raw = Buffer.from(publicB64, 'base64');
+  if (raw.length !== 32) die('UC_SPARKLE_PUBLIC_KEY must be the base64 SUPublicEDKey (32 bytes)');
+  const key = createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: b64url(raw) }, format: 'jwk' });
+  return verify(null, bytes, key, Buffer.from(signatureB64, 'base64'));
 }
 
 function b64url(buf) { return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
