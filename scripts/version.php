@@ -118,7 +118,7 @@ function rollChangelog(string $file, string $from, string $to, string $repoUrl, 
         fail('Nothing under [Unreleased] — add changelog entries before bumping the version');
     }
     $date = gmdate('Y-m-d');
-    $md   = preg_replace('/^## \[Unreleased\]\s*$/m', "## [Unreleased]\n\n## [{$to}] - {$date}", $md, 1);
+    $md   = preg_replace('/^## \[Unreleased\][ \t]*$/m', "## [Unreleased]\n\n## [{$to}] - {$date}", $md, 1);
     // Reference links at the bottom.
     $md = preg_replace('/^\[Unreleased\]: .*$/m', "[Unreleased]: {$repoUrl}/compare/v{$to}...HEAD\n[{$to}]: {$repoUrl}/compare/v{$from}...v{$to}", $md, 1);
     if (! $dry) {
