@@ -15,6 +15,25 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ### Added
 
+- **Sparkle appcasts for macOS apps that update through Sparkle** — WorkSuite
+  Office first: `GET /api/v1/apps/{app}/channels/{channel}/appcast.xml?arch=arm64|x64`.
+  The feed offers what an anonymous macOS update check on that channel would get:
+  the newest published, fully rolled-out release with a READY package for that
+  architecture. It carries the build number as `sparkle:version`, the version,
+  the minimum macOS, the release notes, `sparkle:criticalUpdate` when the Update
+  API would require the update, and the public download URL as the enclosure.
+  Only public channels of public applications answer, because Sparkle sends no
+  credentials. See [docs/sparkle.md](docs/sparkle.md).
+- **Sparkle signatures through the CI attestation.** `scripts/publish-release.mjs`
+  reads `<archive>.edsig` (the `sparkle:edSignature` from Sparkle's `sign_update`)
+  and records it in the attestation as `files[].sparkle_ed_signature`. With
+  `UC_SPARKLE_PUBLIC_KEY` it checks the signature against the archive first, and
+  it refuses a macOS file that has none. The appcast offers a package only with
+  a signature from a verified attestation matching its SHA-256.
+- **WorkSuite Office in the seed catalog** (`lk.worksuite.office`, slug `office`)
+  for development and tests. In production it is created in `/admin`, as
+  described in docs/sparkle.md.
+
 - **Beta can be public.** A channel an administrator marks public is visible
   to everyone: its downloads (`/download/<app>/beta/…`), release notes,
   changelog and update checks. The application page offers the current Beta —
