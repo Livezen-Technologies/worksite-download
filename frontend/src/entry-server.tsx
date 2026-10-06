@@ -37,7 +37,7 @@ export async function useMockApi(): Promise<void> {
 
 export async function listRoutes(): Promise<string[]> {
   const site = await publicApi.site();
-  const routes = ['/', '/apps', '/changelog', '/channels'];
+  const routes = ['/', '/apps', '/changelog', '/channels', '/report-a-problem'];
   for (const app of site.apps) {
     const base = `/apps/${app.slug}`;
     routes.push(base, `${base}/versions`, `${base}/changelog`, `${base}/requirements`);
@@ -57,7 +57,7 @@ export async function loadRoute(url: string): Promise<PrerenderQuery[]> {
     out.push({ key: publicKeys.site, data: site });
     const main = primaryApp(site.apps);
     if (main) await add(publicKeys.app(main.slug), () => publicApi.app(main.slug));
-  } else if (path === '/apps') await add(publicKeys.apps, publicApi.apps);
+  } else if (path === '/apps' || path === '/report-a-problem') await add(publicKeys.apps, publicApi.apps);
   else if (path === '/changelog') await add(publicKeys.changelog(0), () => publicApi.changelog(0));
   else if (path === '/channels') await add(publicKeys.channels, publicApi.channels);
   else if ((m = /^\/apps\/([^/]+)\/releases\/([^/]+)$/.exec(path))) {
