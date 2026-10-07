@@ -603,6 +603,7 @@ route('POST', '/bugtrace/reports/public', (req) => {
   if (!b.captcha_token) throw new MockHttpError(422, 'CAPTCHA_FAILED', 'Captcha verification failed');
   const errors: Record<string, string> = {};
   if (!String(b.title ?? '').trim()) errors.title = 'Required';
+  if (b.platform !== undefined && !['web', 'desktop', 'mobile'].includes(b.platform)) errors.platform = 'One of web, desktop, mobile';
   if (b.contact?.consent && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.contact.email ?? '')) errors['contact.email'] = 'Invalid e-mail address';
   if (Object.keys(errors).length) throw new MockHttpError(422, 'VALIDATION_FAILED', 'Check the highlighted fields', errors);
   const reference = `BR-${21000 + publicReports.size + state.reports.length}`;

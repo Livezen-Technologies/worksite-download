@@ -284,27 +284,53 @@ class IngestController extends BaseApiController
         }
         $appRef = (string) ($body['app'] ?? '');
         $app    = Bt::db()->table('applications')->groupStart()->where('slug', $appRef)->orWhere('app_identifier', $appRef)->orWhere('public_id', $appRef)->groupEnd()->get()->getRowArray();
-        $project = null;
-        if ($app) {
-            foreach (['desktop', 'server', 'web', 'mobile'] as $platform) {
-                $project = Bt::db()->table('bt_projects')->where('application_id', $app['id'])->where('platform', $platform)->where('status', 'ACTIVE')->get()->getRowArray();
-                if ($project) {
-                    break;
-                }
-            }
+        $platform = isset($body['platform']) ? strtolower(trim((string) $body['platform'])) : '';
+        if ($platform !== '' && ! in_array($platform, self::PUBLIC_REPORT_PLATFORMS, true)) {
+            throw ApiException::validation(['platform' => 'One of ' . implode(', ', self::PUBLIC_REPORT_PLATFORMS)]);
         }
-        $project ??= ProjectService::resolve('desktop');
+        $project = self::publicReportProject($app, $platform);
         if ($project === null) {
             throw ApiException::validation(['app' => 'Unknown application']);
         }
         $ctx = ['tenant_ref' => null, 'policy' => (new PolicyService())->effective(null, null, null, false)];
         $body['category'] ??= 'BUG';
         $body['app'] = $app['app_identifier'] ?? $appRef;
+        if ($platform !== '') {
+            $body['context'] = (is_array($body['context'] ?? null) ? $body['context'] : []) + ['platform' => $platform];
+        }
         unset($body['attachments'], $body['user_ref'], $body['installation_ref']);
         $portal = $this->auth->user !== null ? $this->auth->userId() : null;
         $r      = (new ReportService())->create($project, $ctx, $body, $portal, 'public');
 
         return $this->ok(['reference' => $r['reference'], 'status_url' => $r['status_url'], 'status_token' => $r['status_token']], $r['created'] ? 201 : 200);
+    }
+
+    /** Where a public reporter says the problem happened (FR-BT-REP-09). */
+    private const PUBLIC_REPORT_PLATFORMS = ['web', 'desktop', 'mobile'];
+
+    /**
+     * Bug Trace project for a public report: the application's project for the
+     * chosen platform, else any active project for that platform, else the
+     * application's first active project, else the desktop project.
+     */
+    private static function publicReportProject(?array $app, string $platform): ?array
+    {
+        $active = static fn () => Bt::db()->table('bt_projects')->where('status', 'ACTIVE');
+        if ($app && $platform !== '' && ($p = $active()->where('application_id', $app['id'])->where('platform', $platform)->get()->getRowArray())) {
+            return $p;
+        }
+        if ($platform !== '' && ($p = $active()->where('platform', $platform)->orderBy('id')->get()->getRowArray())) {
+            return $p;
+        }
+        if ($app) {
+            foreach (['desktop', 'server', 'web', 'mobile'] as $pf) {
+                if ($p = $active()->where('application_id', $app['id'])->where('platform', $pf)->get()->getRowArray()) {
+                    return $p;
+                }
+            }
+        }
+
+        return ProjectService::resolve('desktop');
     }
 
     /**

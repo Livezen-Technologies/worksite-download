@@ -8,7 +8,9 @@ import { useHead } from '@/core/head';
 import { config } from '@/core/config';
 import { formatDateTime, PLATFORM_LABEL } from '@/core/format';
 import { usePlatform } from '@/hooks/usePlatform';
+import { defaultReportPlatform, isReportPlatform, REPORT_PLATFORMS, type ReportPlatform } from '@/core/bugreport';
 import { Alert, Badge, Button, Checkbox, Select, TextArea, TextField, type Tone } from '@/components/ui';
+import { cx } from '@/core/format';
 import { Breadcrumb, Container, QueryState } from './common';
 
 const CATEGORIES: { value: BugCategory; label: string }[] = [
@@ -104,7 +106,7 @@ function Captcha({ onToken, resetKey }: { onToken: (t: string) => void; resetKey
 
 // ---------------------------------------------------------------- form
 
-type Errors = Partial<Record<'app' | 'title' | 'severity' | 'category' | 'email' | 'captcha', string>>;
+type Errors = Partial<Record<'app' | 'platform' | 'title' | 'severity' | 'category' | 'email' | 'captcha', string>>;
 
 export function BugReportPage() {
   const [sp] = useSearchParams();
@@ -121,6 +123,9 @@ export function BugReportPage() {
   const [steps, setSteps] = useState('');
   const [expected, setExpected] = useState('');
   const [os, setOs] = useState('');
+  const queryPlatform = sp.get('platform');
+  const [platform, setPlatform] = useState<ReportPlatform | null>(isReportPlatform(queryPlatform) ? queryPlatform : null);
+  const [platformTouched, setPlatformTouched] = useState(isReportPlatform(queryPlatform));
   const [email, setEmail] = useState('');
   const [consent, setConsent] = useState(false);
   const [website, setWebsite] = useState('');
@@ -136,6 +141,11 @@ export function BugReportPage() {
   useEffect(() => {
     if (!app && list.length) setApp(list[0].slug);
   }, [app, list]);
+  // Until the reporter picks one, follow the application kind and their device.
+  const appKind = list.find((a) => a.slug === app)?.kind;
+  useEffect(() => {
+    if (!platformTouched) setPlatform(defaultReportPlatform(appKind, detected.platform));
+  }, [platformTouched, appKind, detected.platform]);
   useEffect(() => {
     if (!os && detected.platform) setOs(PLATFORM_LABEL[detected.platform]);
     // Only pre-fill once; the user may clear or change it.
@@ -146,6 +156,7 @@ export function BugReportPage() {
     e.preventDefault();
     const errs: Errors = {};
     if (!app) errs.app = 'Choose an application';
+    if (!platform) errs.platform = 'Choose where the problem happened';
     if (!title.trim()) errs.title = 'Give the problem a short summary';
     if (consent && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) errs.email = 'Enter a valid email address';
     if (config.turnstileSiteKey && !captcha) errs.captcha = 'Please complete the verification';
@@ -157,6 +168,7 @@ export function BugReportPage() {
     try {
       const r = await publicApi.submitBugReport({
         app,
+        platform: platform ?? undefined,
         release: release.trim() || undefined,
         title: title.trim(),
         description: description.trim() || undefined,
@@ -167,7 +179,7 @@ export function BugReportPage() {
         expected: expected.trim() || undefined,
         severity,
         category,
-        context: { os: os.trim() ? { name: os.trim().slice(0, 80) } : undefined, source: 'website' },
+        context: { os: os.trim() ? { name: os.trim().slice(0, 80) } : undefined, platform, source: 'website' },
         contact: consent ? { consent: true, email: email.trim() } : { consent: false },
         client_report_id: clientId,
         captcha_token: captcha,
@@ -180,7 +192,7 @@ export function BugReportPage() {
         setCaptchaReset((n) => n + 1);
       } else if (err instanceof ApiError && err.code === 'VALIDATION_FAILED') {
         const f = err.fieldErrors;
-        setErrors({ app: f.app, title: f.title, severity: f.severity, category: f.category, email: f['contact.email'] });
+        setErrors({ app: f.app, platform: f.platform, title: f.title, severity: f.severity, category: f.category, email: f['contact.email'] });
         setFormError(err.message);
       } else {
         setFormError(errorMessage(err));
@@ -245,6 +257,46 @@ export function BugReportPage() {
             </Alert>
           )}
           <Select label="Application" required value={app} onChange={(e) => setApp(e.target.value)} error={errors.app} options={list.map((a) => ({ value: a.slug, label: a.name }))} />
+          <fieldset className="sm:col-span-2" aria-describedby={errors.platform ? 'bt-platform-error' : undefined}>
+            <legend className="mb-1 text-[12px] font-semibold text-ink">
+              Where did it happen?
+              <span aria-hidden className="ml-0.5 text-bad">
+                *
+              </span>
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {REPORT_PLATFORMS.map((p) => (
+                <label
+                  key={p.value}
+                  className={cx(
+                    'flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-[13px] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand/25',
+                    platform === p.value ? 'border-brand bg-brand/5' : 'border-line hover:border-brand/50',
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="platform"
+                    value={p.value}
+                    checked={platform === p.value}
+                    onChange={() => {
+                      setPlatform(p.value);
+                      setPlatformTouched(true);
+                    }}
+                    className="mt-0.5 accent-brand"
+                  />
+                  <span>
+                    <span className="block font-semibold text-ink">{p.label}</span>
+                    <span className="block text-[11.5px] text-subtle">{p.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {errors.platform && (
+              <p id="bt-platform-error" role="alert" className="mt-1 text-[11.5px] font-medium text-bad">
+                {errors.platform}
+              </p>
+            )}
+          </fieldset>
           <TextField label="Version" hint="Optional — e.g. 3.4.1 (Help → About)" value={release} onChange={(e) => setRelease(e.target.value)} maxLength={80} />
           <Select label="What kind of problem?" required value={category} onChange={(e) => setCategory(e.target.value as BugCategory)} error={errors.category} options={CATEGORIES} />
           <Select label="How bad is it?" required value={severity} onChange={(e) => setSeverity(e.target.value as BugSeverity)} error={errors.severity} options={SEVERITIES} />

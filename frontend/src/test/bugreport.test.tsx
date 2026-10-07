@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router';
 import { BugReportPage } from '@/pages/public/BugReportPage';
 import { publicApi } from '@/services/public';
 import { ApiError } from '@/services/api';
+import { defaultReportPlatform, reportProblemPath } from '@/core/bugreport';
 
 function renderPage(url = '/report-a-problem') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -23,8 +24,8 @@ describe('BugReportPage (public report form)', () => {
     vi.restoreAllMocks();
     vi.spyOn(publicApi, 'apps').mockResolvedValue({
       data: [
-        { slug: 'desktop', name: 'WorkSuite Desktop' },
-        { slug: 'server', name: 'WorkSuite Server' },
+        { slug: 'desktop', name: 'WorkSuite Desktop', kind: 'DESKTOP' },
+        { slug: 'server', name: 'WorkSuite Server', kind: 'SERVER' },
       ],
     } as any);
   });
@@ -48,7 +49,7 @@ describe('BugReportPage (public report form)', () => {
     expect(await screen.findByText('BR-20001')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Track the status of this report' })).toHaveAttribute('href', '/report-a-problem/status?ref=BR-20001&token=tok123');
     const body = submit.mock.calls[0][0];
-    expect(body).toMatchObject({ app: 'server', release: '3.4.0', title: 'Installer says the file is damaged', steps: ['Open installer', 'Click next'], category: 'BUG', severity: 'ANNOYING', contact: { consent: false }, website: '' });
+    expect(body).toMatchObject({ app: 'server', platform: 'web', release: '3.4.0', title: 'Installer says the file is damaged', steps: ['Open installer', 'Click next'], category: 'BUG', severity: 'ANNOYING', contact: { consent: false }, website: '' });
     expect(body.captcha_token).not.toBe('');
     expect(body.client_report_id).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
   });
@@ -64,5 +65,31 @@ describe('BugReportPage (public report form)', () => {
     await user.type(screen.getByLabelText(/Email address/), 'a@b.co');
     await user.click(screen.getByRole('button', { name: 'Send report' }));
     expect(await screen.findByText('Invalid e-mail address')).toBeInTheDocument();
+  });
+
+  it('offers web, desktop and mobile, honours ?platform= and sends the choice', async () => {
+    const submit = vi.spyOn(publicApi, 'submitBugReport').mockResolvedValue({ reference: 'BR-20002', status_url: null, status_token: null });
+    const user = userEvent.setup();
+    renderPage('/report-a-problem?app=desktop&platform=mobile');
+    expect(await screen.findByRole('radio', { name: /Mobile app/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /Web app/ })).not.toBeChecked();
+    await user.click(screen.getByRole('radio', { name: /Desktop app/ }));
+    await user.type(screen.getByLabelText(/Summary/), 'Sync stops');
+    await user.click(screen.getByRole('button', { name: 'Send report' }));
+    await screen.findByText('BR-20002');
+    expect(submit.mock.calls[0][0]).toMatchObject({ app: 'desktop', platform: 'desktop', context: { platform: 'desktop' } });
+  });
+});
+
+describe('bug report helpers', () => {
+  it('defaults the platform from the app kind and device', () => {
+    expect(defaultReportPlatform('SERVER', 'windows')).toBe('web');
+    expect(defaultReportPlatform('DESKTOP', 'android')).toBe('mobile');
+    expect(defaultReportPlatform('MOBILE', null)).toBe('mobile');
+    expect(defaultReportPlatform('DESKTOP', 'macos')).toBe('desktop');
+  });
+  it('builds pre-filled links from download-center pages', () => {
+    expect(reportProblemPath()).toBe('/report-a-problem');
+    expect(reportProblemPath({ app: 'desktop', version: '2.7.0', platform: 'desktop' })).toBe('/report-a-problem?app=desktop&version=2.7.0&platform=desktop');
   });
 });

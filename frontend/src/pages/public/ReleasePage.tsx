@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
+import { reportProblemPath } from '@/core/bugreport';
 import { Rss } from 'lucide-react';
 import { publicApi, publicKeys } from '@/services/public';
 import { useHead } from '@/core/head';
@@ -66,6 +67,10 @@ export function ReleasePage() {
             ·
             <Link className="link" to={`/apps/${slug}/changelog`}>
               All release notes
+            </Link>
+            ·
+            <Link className="link" to={reportProblemPath({ app: slug, version: r.version })}>
+              Report a problem with {r.version}
             </Link>
           </p>
         </article>

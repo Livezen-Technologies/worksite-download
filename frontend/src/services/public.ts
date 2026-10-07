@@ -53,6 +53,8 @@ export type BugCategory = 'BUG' | 'PERFORMANCE' | 'DATA' | 'UI' | 'FEATURE_REQUE
 /** Anonymous problem report from the website (FR-BT-REP-09). */
 export interface PublicBugReport {
   app: string;
+  /** Where the problem happened: picks the Bug Trace project (web, desktop, mobile). */
+  platform?: 'web' | 'desktop' | 'mobile';
   release?: string;
   title: string;
   description?: string;
