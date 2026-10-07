@@ -13,6 +13,26 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+### Added
+
+- **Public "Report a problem" form (FR-BT-REP-09)** — `/report-a-problem`
+  on the public site lets anyone report a bug, download/installation
+  problem or feature request for a WorkSuite application without signing
+  in (app, version, kind, severity, summary, details, steps, expected
+  result, OS, optional email with consent). Uses the existing
+  `POST /api/v1/bugtrace/reports/public` endpoint with honeypot,
+  idempotent `client_report_id` and an optional Cloudflare Turnstile
+  widget (`VITE_TURNSTILE_SITE_KEY`). On success it shows the `BR-`
+  reference and a private status link (`/report-a-problem/status`,
+  token-protected, `noindex`). Linked from the public footer and mobile
+  menu, included in prerendered routes, and served by the mock API.
+- **Report form: Web / Desktop / Mobile app** — reporters choose where the
+  problem happened (defaulted from the application kind and their device,
+  or `?platform=`); `POST /bugtrace/reports/public` accepts `platform` and
+  files the report under the matching Bug Trace project (WS-WEB, WS-DSK,
+  WS-MOB). Download-center app and release pages link to the form with the
+  application and version pre-filled.
+
 ## [0.3.0] - 2026-10-03
 
 ### Added
