@@ -1,6 +1,6 @@
 {
   "name": "@worksuite/bugtrace-electron",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "WorkSuite Bug Trace SDK for the Electron main process: uncaught exceptions, Crashpad minidumps, GPU/renderer crashes, hangs and updater failures (FR-BT-SDK-02).",
   "license": "UNLICENSED",
   "private": true,
