@@ -13,7 +13,7 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-06
+## [0.4.0] - 2026-10-07
 
 ### Added
 
