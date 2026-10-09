@@ -29,7 +29,7 @@ describe('SEO (§5.5)', () => {
   it('renders canonical, OpenGraph, noindex and escaped JSON-LD', () => {
     const html = renderHeadHtml({ title: 'A & B', description: 'd', path: '/apps/x', noindex: true, jsonLd: { name: '</script>' } });
     expect(html).toContain('<title>A &amp; B</title>');
-    expect(html).toContain('rel="canonical" href="https://updates.worksuitecloud.com/apps/x"');
+    expect(html).toContain('rel="canonical" href="https://download.worksuitecloud.com/apps/x"');
     expect(html).toContain('property="og:title"');
     expect(html).toContain('content="noindex"');
     expect(html).not.toContain('</script>"');

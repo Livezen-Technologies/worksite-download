@@ -108,7 +108,7 @@ export function PublicFooter({ extra }: { extra?: ReactNode }) {
         </nav>
         <div>{extra}</div>
       </div>
-      <div className="border-t border-line py-3 text-center text-[11.5px] text-subtle">© 2026 Livezen Technologies (Pvt) Ltd · updates.worksuitecloud.com</div>
+      <div className="border-t border-line py-3 text-center text-[11.5px] text-subtle">© 2026 Livezen Technologies (Pvt) Ltd · download.worksuitecloud.com</div>
     </footer>
   );
 }

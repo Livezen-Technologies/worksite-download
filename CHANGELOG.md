@@ -13,6 +13,7 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-09
 ### Added
 
 - **Public "Report a problem" form (FR-BT-REP-09)** — `/report-a-problem`
@@ -32,6 +33,17 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   files the report under the matching Bug Trace project (WS-WEB, WS-DSK,
   WS-MOB). Download-center app and release pages link to the form with the
   application and version pre-filled.
+
+### Changed
+
+- **Public address is now `download.worksuitecloud.com`** (was
+  `updates.worksuitecloud.com`; staging `download-staging.`). It is used for
+  canonical URLs, the sitemap, the OpenAPI servers, the header and footer, and
+  the SDK defaults (`@worksuite/bugtrace-web`, and through it Electron and
+  React Native, plus the PHP `BugTraceReporter`). The old name keeps being
+  served unchanged by the same nginx site, because builds in the field call its
+  API and an API POST cannot follow a redirect. The CDN host
+  (`cdn-updates.`) and the `updates@` mail sender are unchanged.
 
 ## [0.3.0] - 2026-10-03
 
@@ -204,7 +216,8 @@ B1 Bug Trace core).
   never executed; storage credentials are resolved from the secret service
   by reference only; telemetry stores no IP addresses or user identities.
 
-[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Livezen-Technologies/worksite-download/releases/tag/v0.1.0
