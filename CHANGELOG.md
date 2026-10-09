@@ -43,7 +43,13 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   React Native, plus the PHP `BugTraceReporter`). The old name keeps being
   served unchanged by the same nginx site, because builds in the field call its
   API and an API POST cannot follow a redirect. The CDN host
-  (`cdn-updates.`) and the `updates@` mail sender are unchanged.
+  (`cdn-updates.`) and the `updates@` mail sender are unchanged. (#7)
+- **Report a problem in every WorkSuite app.** The clients now link to the
+  public form, each pre-filled with its app, version and platform:
+  web (account menu and the screen-error panel; with `VITE_BUGTRACE_KEY` the
+  SDK's in-app dialog and crash capture instead — worksuite#143), desktop
+  (Help › Report a Problem…, 0.2.216 — worksuite-desktop#316) and mobile
+  (Settings › About, 1.2.1 — worksuite-mobile#13).
 
 ## [0.3.0] - 2026-10-03
 
