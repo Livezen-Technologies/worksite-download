@@ -42,7 +42,7 @@ final class BugTraceReporter
      */
     public function __construct(private array $config, ?\Redis $redis = null, ?callable $tptProvider = null, ?callable $transport = null)
     {
-        $this->config += ['endpoint' => 'https://updates.worksuitecloud.com', 'environment' => 'production', 'app' => 'lk.worksuite.server', 'edition' => null, 'root_path' => '', 'spool_file' => sys_get_temp_dir() . '/worksuite-bugtrace.spool', 'policy' => null];
+        $this->config += ['endpoint' => 'https://download.worksuitecloud.com', 'environment' => 'production', 'app' => 'lk.worksuite.server', 'edition' => null, 'root_path' => '', 'spool_file' => sys_get_temp_dir() . '/worksuite-bugtrace.spool', 'policy' => null];
         $this->redis       = $redis;
         $this->tptProvider = $tptProvider;
         $this->transport   = $transport;

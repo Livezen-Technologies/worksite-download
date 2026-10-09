@@ -33,6 +33,17 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   WS-MOB). Download-center app and release pages link to the form with the
   application and version pre-filled.
 
+### Changed
+
+- **Public address is now `download.worksuitecloud.com`** (was
+  `updates.worksuitecloud.com`; staging `download-staging.`). It is used for
+  canonical URLs, the sitemap, the OpenAPI servers, the header and footer, and
+  the SDK defaults (`@worksuite/bugtrace-web`, and through it Electron and
+  React Native, plus the PHP `BugTraceReporter`). The old name keeps being
+  served unchanged by the same nginx site, because builds in the field call its
+  API and an API POST cannot follow a redirect. The CDN host
+  (`cdn-updates.`) and the `updates@` mail sender are unchanged.
+
 ## [0.3.0] - 2026-10-03
 
 ### Added

@@ -75,7 +75,7 @@ export class BugTraceClient {
 
   constructor(options: InitOptions) {
     this.opts = {
-      endpoint: 'https://updates.worksuitecloud.com',
+      endpoint: 'https://download.worksuitecloud.com',
       environment: 'production',
       app: 'lk.worksuite.web',
       platform: 'web',

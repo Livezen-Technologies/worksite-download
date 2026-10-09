@@ -33,7 +33,7 @@ npm run preview        # serve dist/ (same proxy as dev)
 | `VITE_API_MOCK` | `false` | `true` switches on the in-browser mock API (`src/services/mock/`). This is a literal build-time check, so the mock chunk is left out of normal builds. |
 | `VITE_API_BASE` | `/api/v1` | Base path of the JSON API (same origin). |
 | `VITE_DEV_PROXY_TARGET` | `http://localhost:8080` | Backend that the dev/preview server proxies to. |
-| `VITE_PUBLIC_ORIGIN` | `https://updates.worksuitecloud.com` | Used for canonical URLs, OpenGraph and JSON-LD. |
+| `VITE_PUBLIC_ORIGIN` | `https://download.worksuitecloud.com` | Used for canonical URLs, OpenGraph and JSON-LD. |
 | `UC_API_BASE` (prerender) | `http://localhost:8080/api/v1` | API the prerender script reads from (or pass `--api`). |
 
 ## Mock mode
