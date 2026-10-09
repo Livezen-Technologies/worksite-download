@@ -44,7 +44,7 @@ export function PublicHeader() {
       {open && (
         <nav id="mobile-nav" aria-label="Main" className="border-t border-white/10 px-4 pb-3 md:hidden">
           <ul className="flex flex-col text-[14px]">
-            {[...NAV, { to: '/portal', label: 'Sign in' }].map((n) => (
+            {[...NAV, { to: '/report-a-problem', label: 'Report a problem' }, { to: '/portal', label: 'Sign in' }].map((n) => (
               <li key={n.to}>
                 <Link to={n.to} className="block py-2 text-[#dfe4f5] hover:text-white" onClick={() => setOpen(false)}>
                   {n.label}
@@ -91,6 +91,11 @@ export function PublicFooter({ extra }: { extra?: ReactNode }) {
               </Link>
             </li>
             <li>
+              <Link className="hover:text-ink" to="/report-a-problem">
+                Report a problem
+              </Link>
+            </li>
+            <li>
               <a className="hover:text-ink" href="/changelog/feed">
                 RSS
               </a>{' '}
@@ -103,7 +108,7 @@ export function PublicFooter({ extra }: { extra?: ReactNode }) {
         </nav>
         <div>{extra}</div>
       </div>
-      <div className="border-t border-line py-3 text-center text-[11.5px] text-subtle">© 2026 Livezen Technologies (Pvt) Ltd · updates.worksuitecloud.com</div>
+      <div className="border-t border-line py-3 text-center text-[11.5px] text-subtle">© 2026 Livezen Technologies (Pvt) Ltd · download.worksuitecloud.com</div>
     </footer>
   );
 }

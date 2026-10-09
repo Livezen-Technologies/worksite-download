@@ -596,6 +596,26 @@ route('POST', '/subscriptions', (req) => {
 });
 route('GET', '/subscriptions/confirm', () => ({ status: 'confirmed' }));
 route('GET', '/subscriptions/unsubscribe', () => ({ status: 'unsubscribed' }));
+const publicReports = new Map<string, { reference: string; title: string; token: string; created_at: string }>();
+route('POST', '/bugtrace/reports/public', (req) => {
+  const b = req.body ?? {};
+  if (b.website) return ok({ reference: 'BR-0', status_url: null, status_token: null }, 201);
+  if (!b.captcha_token) throw new MockHttpError(422, 'CAPTCHA_FAILED', 'Captcha verification failed');
+  const errors: Record<string, string> = {};
+  if (!String(b.title ?? '').trim()) errors.title = 'Required';
+  if (b.platform !== undefined && !['web', 'desktop', 'mobile'].includes(b.platform)) errors.platform = 'One of web, desktop, mobile';
+  if (b.contact?.consent && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.contact.email ?? '')) errors['contact.email'] = 'Invalid e-mail address';
+  if (Object.keys(errors).length) throw new MockHttpError(422, 'VALIDATION_FAILED', 'Check the highlighted fields', errors);
+  const reference = `BR-${21000 + publicReports.size + state.reports.length}`;
+  const token = newId('tok');
+  publicReports.set(reference, { reference, title: b.title, token, created_at: new Date().toISOString() });
+  return ok({ reference, status_url: `/api/v1/bugtrace/reports/${reference}/status`, status_token: token }, 201);
+});
+route('GET', '/bugtrace/reports/{ref}/status', (req, p) => {
+  const r = publicReports.get(p.ref);
+  if (!r || req.query.get('token') !== r.token) throw new MockHttpError(404, 'NOT_FOUND', 'Report not found');
+  return { reference: r.reference, title: r.title, status: 'received', fixed_in: null, created_at: r.created_at, updated_at: r.created_at, updates: [] };
+});
 
 // ---- auth
 route('POST', '/auth/login', (req) => {
@@ -1655,7 +1675,7 @@ route('GET', '/portal/bug-reports', () => ({
 // ---------------------------------------------------------------- dispatcher
 
 export function handleMock(req: MockRequest): MockResult {
-  if (req.method !== 'GET' && !req.path.startsWith('/auth/login') && !req.path.startsWith('/subscriptions') && !req.path.startsWith('/auth/register') && !req.path.startsWith('/auth/password') && !req.path.startsWith('/auth/verify-email')) {
+  if (req.method !== 'GET' && !req.path.startsWith('/auth/login') && !req.path.startsWith('/subscriptions') && !req.path.startsWith('/bugtrace/reports/public') && !req.path.startsWith('/auth/register') && !req.path.startsWith('/auth/password') && !req.path.startsWith('/auth/verify-email')) {
     if (req.headers['x-csrf-token'] !== session.csrf) throw new MockHttpError(403, 'CSRF_FAILED', 'Your session token expired. Reload the page.');
   }
   for (const r of routes) {

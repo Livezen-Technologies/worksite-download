@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
+import { reportProblemPath } from '@/core/bugreport';
 import { Rss } from 'lucide-react';
 import { publicApi, publicKeys } from '@/services/public';
 import { useHead } from '@/core/head';
@@ -109,6 +110,11 @@ export function AppPage() {
                 <a className="link inline-flex items-center gap-1" href={`/apps/${app.slug}/changelog/feed`}>
                   <Rss className="size-3" aria-hidden /> RSS
                 </a>
+              </li>
+              <li>
+                <Link className="link" to={reportProblemPath({ app: app.slug, version: latest.version })}>
+                  Report a problem
+                </Link>
               </li>
               {page.support_url && (
                 <li>

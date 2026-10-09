@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Release distribution, signed manifests, Desktop Update API, telemetry, server
-    edition updates and administration for updates.worksuitecloud.com
+    edition updates and administration for download.worksuitecloud.com
     (WS-UPDATE-CENTER-SRS-001 §10, §17.10, §18.12).
 
     Errors always use `{ "error": { "code", "message", "details" } }` (§10.8).
@@ -12,8 +12,8 @@ info:
     Ed25519 over the canonical JSON (sorted keys, no whitespace) of the object
     without `signature`.
 servers:
-  - url: https://updates.worksuitecloud.com
-  - url: https://updates-staging.worksuitecloud.com
+  - url: https://download.worksuitecloud.com
+  - url: https://download-staging.worksuitecloud.com
 tags:
   - name: Public
   - name: Desktop

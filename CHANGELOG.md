@@ -13,7 +13,43 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-07
+## [0.4.0] - 2026-10-10
+### Added
+
+- **Public "Report a problem" form (FR-BT-REP-09)** — `/report-a-problem`
+  on the public site lets anyone report a bug, download/installation
+  problem or feature request for a WorkSuite application without signing
+  in (app, version, kind, severity, summary, details, steps, expected
+  result, OS, optional email with consent). Uses the existing
+  `POST /api/v1/bugtrace/reports/public` endpoint with honeypot,
+  idempotent `client_report_id` and an optional Cloudflare Turnstile
+  widget (`VITE_TURNSTILE_SITE_KEY`). On success it shows the `BR-`
+  reference and a private status link (`/report-a-problem/status`,
+  token-protected, `noindex`). Linked from the public footer and mobile
+  menu, included in prerendered routes, and served by the mock API.
+- **Report form: Web / Desktop / Mobile app** — reporters choose where the
+  problem happened (defaulted from the application kind and their device,
+  or `?platform=`); `POST /bugtrace/reports/public` accepts `platform` and
+  files the report under the matching Bug Trace project (WS-WEB, WS-DSK,
+  WS-MOB). Download-center app and release pages link to the form with the
+  application and version pre-filled.
+
+### Changed
+
+- **Public address is now `download.worksuitecloud.com`** (was
+  `updates.worksuitecloud.com`; staging `download-staging.`). It is used for
+  canonical URLs, the sitemap, the OpenAPI servers, the header and footer, and
+  the SDK defaults (`@worksuite/bugtrace-web`, and through it Electron and
+  React Native, plus the PHP `BugTraceReporter`). The old name keeps being
+  served unchanged by the same nginx site, because builds in the field call its
+  API and an API POST cannot follow a redirect. The CDN host
+  (`cdn-updates.`) and the `updates@` mail sender are unchanged. (#7)
+- **Report a problem in every WorkSuite app.** The clients now link to the
+  public form, each pre-filled with its app, version and platform:
+  web (account menu and the screen-error panel; with `VITE_BUGTRACE_KEY` the
+  SDK's in-app dialog and crash capture instead — worksuite#143), desktop
+  (Help › Report a Problem…, 0.2.216 — worksuite-desktop#316) and mobile
+  (Settings › About, 1.2.1 — worksuite-mobile#13).
 
 ### Added
 
