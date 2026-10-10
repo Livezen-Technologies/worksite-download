@@ -13,7 +13,20 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-10
+## [0.4.0] - 2026-10-09
+
+Deployed to download.worksuitecloud.com at 19:27 UTC on 2026-10-09 from
+`0ac23d4`, which merged main into `deploy/download-worksuitecloud`. Until then
+the two branches had drifted: main lacked the fixes production runs on (the
+two-factor switch, MariaDB index names, the publishing pipeline), so deploying
+main alone would have taken them off the live site. #9 (`ee8fa93`) brought main
+level with the deployed branch; main is the branch to deploy from again.
+
+The release combines two lines of work that each called themselves 0.4.0: the
+bug report form and the download.worksuitecloud.com rename from main, and the
+Sparkle appcasts and public Beta channel from the deployed branch. Both are listed
+below.
+
 ### Added
 
 - **Public "Report a problem" form (FR-BT-REP-09)** — `/report-a-problem`
