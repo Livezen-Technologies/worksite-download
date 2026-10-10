@@ -187,6 +187,39 @@ final class ReleaseLifecycleTest extends UcTestCase
         $this->seeInDatabase('audit_logs', ['action' => 'release.withdrawn']);
     }
 
+    public function testUnsignedPackagesPassOnlyOnTestChannelsWhenAllowed(): void
+    {
+        $ids = [];
+        foreach (['STABLE' => 30100, 'BETA' => 30101] as $channel => $build) {
+            [$s, $j] = $this->api($this->dev, 'POST', 'api/v1/admin/releases', ['app_id' => 'desktop', 'version' => '3.1.0', 'build' => $build, 'channel' => $channel, 'minimum_supported_version' => '2.5.0']);
+            $this->assertSame(201, $s, json_encode($j));
+            $this->upload($this->dev, $j['id'], 'windows', 'x64', 'exe', 'WorkSuite-3.1.0-x64.exe', Fixtures::pe('x64'));
+            $ids[$channel] = $j['id'];
+        }
+
+        $cfg      = config('UpdateCenter');
+        $sigCheck = function (string $channel) use ($ids): array {
+            $release = db_connect()->table('releases')->where('public_id', $ids[$channel])->get()->getRowArray();
+            $items   = (new \App\Services\ReleaseValidationService())->check($release, [], false)['items'];
+
+            return array_values(array_filter($items, static fn ($i) => $i['key'] === 'signatures'))[0];
+        };
+
+        $cfg->environmentName = 'PRODUCTION';
+        try {
+            $cfg->allowUnsignedTestChannels = false;
+            $this->assertSame('fail', $sigCheck('BETA')['status'], 'off: unsigned refused on BETA too');
+
+            $cfg->allowUnsignedTestChannels = true;
+            $this->assertSame('skipped', $sigCheck('BETA')['status'], 'on: unsigned accepted on BETA, and said so');
+            $this->assertStringContainsString('allowed on this channel', (string) $sigCheck('BETA')['detail']);
+            $this->assertSame('fail', $sigCheck('STABLE')['status'], 'STABLE always needs valid signatures');
+        } finally {
+            $cfg->environmentName           = 'DEV';
+            $cfg->allowUnsignedTestChannels = false;
+        }
+    }
+
     public function testSeparationOfDuties(): void
     {
         $id = $this->createReadyRelease('2.7.0', 27001);

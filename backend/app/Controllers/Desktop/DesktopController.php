@@ -6,6 +6,7 @@ use App\Controllers\BaseApiController;
 use App\Exceptions\ApiException;
 use App\Services\Catalog;
 use App\Services\ManifestService;
+use App\Services\SparkleAppcastService;
 use App\Services\TelemetryService;
 use App\Services\TenantEventsService;
 use App\Services\UpdateResolverService;
@@ -100,6 +101,42 @@ class DesktopController extends BaseApiController
         return $this->response->setStatusCode(200)->setContentType('application/json')
             ->setHeader('Cache-Control', 'public, max-age=60')->setHeader('ETag', '"' . $row['sha256'] . '"')
             ->setBody($row['manifest_json']);
+    }
+
+    /**
+     * GET apps/{app}/channels/{channel}/appcast.xml?arch=arm64|x64[&type=dmg|zip] — the Sparkle feed of an
+     * app that updates through Sparkle on macOS (SparkleAppcastService). Sparkle sends no credentials, so
+     * only a public channel of a public app answers.
+     */
+    public function appcast(string $appRef, string $channelCode)
+    {
+        $app = Catalog::app($appRef);
+        if ($app['status'] === 'RETIRED') {
+            throw ApiException::notFound('APP_NOT_FOUND', 'Application retired');
+        }
+        $channel = Catalog::channel($channelCode, (int) $app['id']);
+        $this->channelAccessible($app, $channel);
+        if ($app['requires_license_token'] && ! $this->auth->isStaff()) {
+            throw new ApiException('LICENSE_TOKEN_INVALID', 'This application requires a license token', 401);
+        }
+
+        $arch = strtolower((string) $this->request->getGet('arch'));
+        $type = strtolower((string) $this->request->getGet('type')) ?: null;
+        if (! in_array($arch, SparkleAppcastService::ARCHES, true)) {
+            throw ApiException::validation(['arch' => 'arm64 or x64']);
+        }
+        if ($type !== null && ! in_array($type, SparkleAppcastService::TYPES, true)) {
+            throw ApiException::validation(['type' => 'dmg or zip']);
+        }
+
+        $xml = (new SparkleAppcastService())->build($app, $channel, $arch, $type);
+
+        // Replaced, not appended to: the framework's default is no-store, which would keep CDNs from caching it.
+        $this->response->removeHeader('Cache-Control');
+
+        return $this->response->setStatusCode(200)->setContentType('application/rss+xml; charset=utf-8')
+            ->setHeader('Cache-Control', 'public, max-age=60')->setHeader('ETag', '"' . hash('sha256', $xml) . '"')
+            ->setBody($xml);
     }
 
     public function releaseManifest(string $releaseId)

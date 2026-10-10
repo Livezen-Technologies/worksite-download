@@ -51,8 +51,10 @@ export function packageLongLabel(p: PublicPackage): string {
 }
 
 /** Latest-stable resolver path (§5.1): /download/{slug}/{platform}/{arch}/{type}. */
-export function latestResolverUrl(slug: string, p: { platform: Platform; architecture: Arch; package_type: string }): string {
-  return `/download/${slug}/${p.platform}/${p.architecture}/${p.package_type}`;
+/** The always-latest link for a package; a channel other than Stable is part of the path (`/download/desktop/beta/…`). */
+export function latestResolverUrl(slug: string, p: { platform: Platform; architecture: Arch; package_type: string }, channel = 'STABLE'): string {
+  const ch = channel.toUpperCase() === 'STABLE' ? '' : `${channel.toLowerCase()}/`;
+  return `/download/${slug}/${ch}${p.platform}/${p.architecture}/${p.package_type}`;
 }
 
 export const ARCH_GUIDANCE: Partial<Record<Platform, string>> = {

@@ -9,7 +9,7 @@ final class Fixtures
 {
     public static function pe(string $arch = 'x64', int $size = 4096): string
     {
-        $machine = $arch === 'arm64' ? 0xAA64 : 0x8664;
+        $machine = match ($arch) { 'arm64' => 0xAA64, 'x86' => 0x014C, default => 0x8664 };
         $b       = 'MZ' . str_repeat("\0", 0x3A) . pack('V', 0x80) . str_repeat("\0", 0x80 - 0x40) . "PE\0\0" . pack('v', $machine);
 
         return $b . random_bytes(max(0, $size - strlen($b)));

@@ -539,8 +539,8 @@ class ReleaseService
         if ($ctx->user === null) {
             return config('UpdateCenter')->isProduction();
         }
-        if ($ctx->hasRecentMfa()) {
-            return false;
+        if ($ctx->hasRecentMfa() || config('UpdateCenter')->mfaDisabled) {
+            return false;   // the switch matches BaseApiController::requireStepUp()
         }
 
         return config('UpdateCenter')->isProduction() || ! empty($ctx->user['mfa_enabled']);
