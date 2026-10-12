@@ -143,4 +143,29 @@ final class LicensesTest extends UcTestCase
         [$s] = $this->api($viewer, 'POST', 'api/v1/admin/licenses', ['organization' => 'X', 'edition' => 'free', 'expires_at' => '2030-01-01']);
         $this->assertSame(403, $s);
     }
+
+    public function testInspectPreviewsAKeyWithoutActivatingIt(): void
+    {
+        $lic = $this->newLicence(['edition' => 'enterprise']);
+        [$s, $doc] = $this->server('POST', 'api/v1/server/licenses/inspect', [], ['license_key' => $lic['license_key']]);
+        $this->assertSame([200, 'license_preview', 'enterprise', 0, 1], [$s, $doc['type'], $doc['edition'], $doc['active_activations'], $doc['token_version']], json_encode($doc));
+        $this->assertTrue($this->verified($doc));
+        $this->dontSeeInDatabase('license_activations', ['installation_id' => 'x']);
+        $this->assertSame(0, db_connect()->table('license_activations')->countAllResults());
+    }
+
+    public function testTheDownloadCenterRefusesUpdatesToALapsedLicence(): void
+    {
+        $lic = $this->newLicence();
+        [, $act] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-u']);
+        $auth = ['Authorization' => 'Installation ' . $act['installation_key']];
+        $res  = $this->withHeaders($auth)->call('GET', 'api/v1/server/update', ['from' => '3.0.0', 'build' => 1, 'edition' => 'business', 'channel' => 'stable']);
+        $this->assertNotSame(402, $res->response()->getStatusCode());
+
+        db_connect()->table('licenses')->where('public_id', $lic['id'])->update(['updates_until' => gmdate('Y-m-d H:i:s', time() - 60)]);
+        $this->setCookie('uc_session', null);
+        $res = $this->withHeaders($auth)->call('GET', 'api/v1/server/update', ['from' => '3.0.0', 'build' => 1, 'edition' => 'business', 'channel' => 'stable']);
+        $this->assertSame(402, $res->response()->getStatusCode());
+        $this->assertSame('LICENSE_UPDATE_NOT_ELIGIBLE', $this->json($res)['error']['code'] ?? null);
+    }
 }

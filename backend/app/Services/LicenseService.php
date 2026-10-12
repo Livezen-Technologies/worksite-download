@@ -263,6 +263,25 @@ final class LicenseService
         ], self::ENTITLEMENT_TTL), $created];
     }
 
+    /**
+     * POST /server/licenses/inspect — what a key would grant, without activating it: the
+     * preview Admin Center shows before Change key / Change edition. Signed like every answer.
+     */
+    public function inspect(array $in): array
+    {
+        $key = trim((string) ($in['license_key'] ?? ''));
+        if ($key === '') {
+            throw ApiException::validation(['license_key' => 'The licence key is required']);
+        }
+        $lic = db_connect()->table('licenses')->where('key_hash', self::hashKey($key))->get()->getRowArray();
+        if ($lic === null) {
+            throw new ApiException('LICENSE_KEY_INVALID', 'This licence key is not valid. Check it, or get one from the WorkSuite Download Center.', 404);
+        }
+        $active = db_connect()->table('license_activations')->where('license_id', $lic['id'])->where('deactivated_at', null)->countAllResults();
+
+        return ServerAutoUpdateService::sign(['type' => 'license_preview'] + $this->entitlement($lic, null) + ['active_activations' => $active], 300);
+    }
+
     /** POST /server/licenses/validate — the installation's current licence state, signed. */
     public function validate(array $inst, array $in): array
     {
@@ -285,6 +304,25 @@ final class LicenseService
         $db->table('server_installations')->where('id', $inst['id'])->update($set);
 
         return ServerAutoUpdateService::sign(['type' => 'license_entitlement'] + $this->entitlement($lic, $act), self::ENTITLEMENT_TTL);
+    }
+
+    /**
+     * Server-side update gate: an installation activated with a licence key gets updates only
+     * while that licence is active and update-eligible. Nothing on the customer's server can
+     * change this answer. Installations linked the older way (licence token, no key) pass.
+     */
+    public function assertUpdatesAllowed(array $inst): void
+    {
+        if (empty($inst['license_id'])) {
+            return;
+        }
+        $db  = db_connect();
+        $lic = $db->table('licenses')->where('id', $inst['license_id'])->get()->getRowArray();
+        $act = $lic ? $db->table('license_activations')->where('license_id', $lic['id'])->where('installation_id', $inst['installation_id'])->orderBy('id', 'DESC')->get()->getRowArray() : null;
+        $ent = $lic ? $this->entitlement($lic, $act) : null;
+        if ($ent === null || ! $ent['update_eligible']) {
+            throw new ApiException('LICENSE_UPDATE_NOT_ELIGIBLE', 'Your WorkSuite licence is expired or not eligible for updates.', 402, ['status' => $ent['status'] ?? 'UNLICENSED', 'renew_url' => $ent['renew_url'] ?? null]);
+        }
     }
 
     // ---- Shared ------------------------------------------------------------------
@@ -345,6 +383,7 @@ final class LicenseService
         $eligible     = $state === 'ACTIVE' && ($updatesUntil === null || strtotime($updatesUntil . ' UTC') >= time());
 
         return [
+            'token_version'      => 1,
             'license_id'         => $lic['public_id'],
             'license_key_masked' => self::maskKey($lic['key_last4']),
             'status'             => $state,
