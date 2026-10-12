@@ -95,4 +95,18 @@ class ServerController extends BaseApiController
 
         return $this->ok($doc)->setHeader('ETag', '"' . $doc['version'] . '"');
     }
+
+    /** POST /server/licenses/activate — licence key in; installation key + signed entitlement out. */
+    public function activateLicense()
+    {
+        [$doc, $created] = (new \App\Services\LicenseService())->activate($this->body());
+
+        return $this->ok($doc, $created ? 201 : 200);
+    }
+
+    /** POST /server/licenses/validate — signed current licence state for this installation. */
+    public function validateLicense()
+    {
+        return $this->ok((new \App\Services\LicenseService())->validate($this->keyInstallation(), $this->body()));
+    }
 }

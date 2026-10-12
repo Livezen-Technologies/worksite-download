@@ -1,0 +1,146 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Libraries\Signing\Ed25519;
+use App\Services\LicenseService;
+use Tests\Support\UcTestCase;
+
+/**
+ * WorkSuite Server licences: staff generate and manage keys; servers activate a key
+ * and revalidate it, receiving entitlements signed with the update-response key.
+ */
+final class LicensesTest extends UcTestCase
+{
+    private array $sa;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->sa = $this->makeUser(['super_admin'], 'sa-lic@livezen.lk');
+    }
+
+    private function api(array $user, string $method, string $uri, array $body = []): array
+    {
+        $res = $this->withHeaders($this->actingAs($user))->withBodyFormat('json')->call($method, $uri, $body);
+
+        return [$res->response()->getStatusCode(), $this->json($res)];
+    }
+
+    private function server(string $method, string $uri, array $headers, array $body = []): array
+    {
+        $this->setCookie('uc_session', null);
+        $res = $this->withHeaders($headers)->withBodyFormat('json')->call($method, $uri, $body);
+
+        return [$res->response()->getStatusCode(), $this->json($res)];
+    }
+
+    private function verified(array $doc): bool
+    {
+        $cfg = config('UpdateCenter');
+
+        return Ed25519::verifyDocument($doc, [$cfg->responseKeyId => service('responseKeys')->publicKey($cfg->responseKeyId)]);
+    }
+
+    private function newLicence(array $over = []): array
+    {
+        [$s, $j] = $this->api($this->sa, 'POST', 'api/v1/admin/licenses', $over + [
+            'organization' => 'Acme Lanka (Pvt) Ltd', 'contact_email' => 'it@acme.lk', 'edition' => 'business',
+            'expires_at' => gmdate('Y-m-d', time() + 365 * 86400), 'max_activations' => 1,
+        ]);
+        $this->assertSame(201, $s, json_encode($j));
+
+        return $j;
+    }
+
+    public function testKeysAreGeneratedOnceAndStoredOnlyAsAHash(): void
+    {
+        $lic = $this->newLicence();
+        $this->assertMatchesRegularExpression('/^WS-([A-HJ-NP-Z2-9]{4}-){4}[A-HJ-NP-Z2-9]{4}$/', $lic['license_key']);
+        $this->assertSame(['BUSINESS', 'ACTIVE', 'ACTIVE'], [$lic['edition'], $lic['status'], $lic['state']]);
+        $this->assertStringEndsWith(substr($lic['license_key'], -4), $lic['license_key_masked']);
+        $this->seeInDatabase('licenses', ['public_id' => $lic['id'], 'key_hash' => LicenseService::hashKey($lic['license_key'])]);
+        $this->dontSeeInDatabase('licenses', ['key_hash' => $lic['license_key']]);
+        $this->seeInDatabase('audit_logs', ['action' => 'license.created', 'entity_id' => $lic['id']]);
+
+        [, $detail] = $this->api($this->sa, 'GET', "api/v1/admin/licenses/{$lic['id']}");
+        $this->assertArrayNotHasKey('license_key', $detail);
+
+        // Keys are case and separator insensitive.
+        $this->assertSame(LicenseService::hashKey($lic['license_key']), LicenseService::hashKey(strtolower(str_replace('-', ' ', $lic['license_key']))));
+    }
+
+    public function testActivationReturnsSignedEntitlementAndInstallationKeyThenValidates(): void
+    {
+        $lic = $this->newLicence();
+        [$s, $act] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-1', 'hostname' => 'erp.acme.lk', 'version' => '3.1.0']);
+        $this->assertSame(201, $s, json_encode($act));
+        $this->assertTrue($this->verified($act));
+        $this->assertSame(['ACTIVE', 'business', true, 'erp.acme.lk'], [$act['entitlement']['status'], $act['entitlement']['edition'], $act['entitlement']['update_eligible'], $act['entitlement']['hostname']]);
+        $this->assertContains('crm', $act['entitlement']['modules']);   // Business
+        $this->assertContains('mail', $act['entitlement']['modules']);  // and Free
+        $this->assertNotContains('payroll', $act['entitlement']['modules']); // not Enterprise
+        $this->seeInDatabase('server_installations', ['installation_id' => $act['installation_id'], 'edition' => 'BUSINESS']);
+
+        // Same server again: same slot, new installation key.
+        [$s, $again] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-1']);
+        $this->assertSame([200, $act['installation_id']], [$s, $again['installation_id']]);
+
+        // A second server is over the limit of one.
+        [$s, $j] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-2']);
+        $this->assertSame([409, 'LICENSE_ACTIVATION_LIMIT'], [$s, $j['error']['code']]);
+
+        // Revalidate with the (latest) installation key.
+        [$s, $val] = $this->server('POST', 'api/v1/server/licenses/validate', ['Authorization' => 'Installation ' . $again['installation_key']], ['version' => '3.1.0']);
+        $this->assertSame([200, 'license_entitlement', 'ACTIVE'], [$s, $val['type'], $val['status']], json_encode($val));
+        $this->assertTrue($this->verified($val));
+
+        // Suspension shows on the next validation; resume restores it.
+        [$s] = $this->api($this->sa, 'POST', "api/v1/admin/licenses/{$lic['id']}/suspend", ['reason' => 'Unpaid invoice']);
+        $this->assertSame(200, $s);
+        [, $val] = $this->server('POST', 'api/v1/server/licenses/validate', ['Authorization' => 'Installation ' . $again['installation_key']]);
+        $this->assertSame(['SUSPENDED', false], [$val['status'], $val['update_eligible']]);
+        $this->api($this->sa, 'POST', "api/v1/admin/licenses/{$lic['id']}/resume");
+        [, $val] = $this->server('POST', 'api/v1/server/licenses/validate', ['Authorization' => 'Installation ' . $again['installation_key']]);
+        $this->assertSame('ACTIVE', $val['status']);
+    }
+
+    public function testExpiredUnknownAndRevokedKeysAreRefused(): void
+    {
+        [$s, $j] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => 'WS-AAAA-BBBB-CCCC-DDDD-EEEE']);
+        $this->assertSame([404, 'LICENSE_KEY_INVALID'], [$s, $j['error']['code']]);
+
+        $lic = $this->newLicence();
+        db_connect()->table('licenses')->where('public_id', $lic['id'])->update(['expires_at' => gmdate('Y-m-d H:i:s', time() - 86400)]);
+        [$s, $j] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key']]);
+        $this->assertSame([403, 'LICENSE_EXPIRED'], [$s, $j['error']['code']]);
+
+        // Renew puts it back.
+        [$s, $r] = $this->api($this->sa, 'POST', "api/v1/admin/licenses/{$lic['id']}/renew", ['expires_at' => gmdate('Y-m-d', time() + 30 * 86400)]);
+        $this->assertSame([200, 'ACTIVE'], [$s, $r['state']], json_encode($r));
+
+        [$s] = $this->api($this->sa, 'POST', "api/v1/admin/licenses/{$lic['id']}/revoke", ['reason' => 'Replaced']);
+        $this->assertSame(200, $s);
+        [$s, $j] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key']]);
+        $this->assertSame([403, 'LICENSE_REVOKED'], [$s, $j['error']['code']]);
+    }
+
+    public function testDeactivatingAServerFreesTheSlot(): void
+    {
+        $lic = $this->newLicence();
+        $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-1']);
+        [, $detail] = $this->api($this->sa, 'GET', "api/v1/admin/licenses/{$lic['id']}");
+        $this->assertSame(1, $detail['active_activations']);
+        [$s] = $this->api($this->sa, 'POST', "api/v1/admin/licenses/{$lic['id']}/activations/{$detail['activations'][0]['id']}/deactivate", ['reason' => 'Server retired']);
+        $this->assertSame(200, $s);
+        [$s] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-2']);
+        $this->assertSame(201, $s);
+    }
+
+    public function testViewersCannotManageLicences(): void
+    {
+        $viewer = $this->makeUser(['viewer'], 'viewer-lic@livezen.lk');
+        [$s] = $this->api($viewer, 'POST', 'api/v1/admin/licenses', ['organization' => 'X', 'edition' => 'free', 'expires_at' => '2030-01-01']);
+        $this->assertSame(403, $s);
+    }
+}

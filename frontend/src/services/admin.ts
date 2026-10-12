@@ -1,5 +1,7 @@
 import { api, buildUrl, type Query } from './api';
 import type {
+  License,
+  LicenseBody,
   AdminApp,
   AdminChannel,
   AdminNotification,
@@ -72,6 +74,8 @@ export const adminKeys = {
   pkg: (releaseId: string, pkgId: string) => ['admin', 'release', releaseId, 'pkg', pkgId] as const,
   installations: (f: Query) => ['admin', 'installations', f] as const,
   installationStats: ['admin', 'installations', 'stats'] as const,
+  licenses: (f: Query) => ['admin', 'licenses', f] as const,
+  license: (id: string) => ['admin', 'licenses', 'one', id] as const,
   serverReleases: (f: Query) => ['admin', 'server-releases', f] as const,
   serverRollout: (id: string) => ['admin', 'server-rollout', id] as const,
   analytics: (kind: string, f: Query) => ['admin', 'analytics', kind, f] as const,
@@ -158,6 +162,13 @@ export const adminApi = {
   saveCampaign: (id: string, body: CampaignBody) => api.put<Campaign>(`${rel(id)}/campaign`, body),
   installations: (q: Query) => api.get<ListResponse<Installation>>(`${A}/installations`, q),
   installationStats: () => api.get<InstallationStats>(`${A}/installations/stats`),
+  licenses: (q: Query) => api.get<ListResponse<License>>(`${A}/licenses`, q),
+  license: (id: string) => api.get<License>(`${A}/licenses/${id}`),
+  createLicense: (body: LicenseBody) => api.post<License>(`${A}/licenses`, body),
+  updateLicense: (id: string, body: Partial<LicenseBody>) => api.patch<License>(`${A}/licenses/${id}`, body),
+  renewLicense: (id: string, body: { expires_at: string; updates_until?: string }) => api.post<License>(`${A}/licenses/${id}/renew`, body),
+  licenseStatus: (id: string, action: 'suspend' | 'resume' | 'revoke', body: { reason?: string }) => api.post<License>(`${A}/licenses/${id}/${action}`, body),
+  deactivateLicense: (id: string, activationId: number, body: { reason?: string }) => api.post<License>(`${A}/licenses/${id}/activations/${activationId}/deactivate`, body),
   fleetAction: (releaseId: string, action: 'start' | 'pause' | 'resume' | 'advance') => api.post<Campaign>(`${A}/fleet/${releaseId}/${action}`, {}),
 
   // server release console (DL-1…DL-4)

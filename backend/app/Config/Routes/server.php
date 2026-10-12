@@ -12,6 +12,9 @@ $routes->group('api/v1/server', ['namespace' => 'App\Controllers\Server', 'filte
     $routes->post('advisories/ack', 'ServerController::ack');
     // WS-CORE-SYSUPDATE-SRS-001 §10 (new)
     $routes->post('installations/register', 'ServerController::register');
+    // Licences: activate with a key, revalidate with the installation key
+    $routes->post('licenses/activate', 'ServerController::activateLicense');
+    $routes->post('licenses/validate', 'ServerController::validateLicense');
     $routes->get('auto-update/plan', 'ServerController::plan');
     $routes->get('auto-update/policy', 'ServerController::getPolicy');
     $routes->put('auto-update/policy', 'ServerController::putPolicy');
