@@ -418,5 +418,10 @@ final class ServerAutoUpdateTest extends UcTestCase
         [, $console] = $this->api($this->rm, 'GET', 'api/v1/admin/server/releases');
         $this->assertSame([1, 1, '3.4.0'], [$console['kpis']['linked'], $console['kpis']['below_minimum'], $console['kpis']['minimum_stable']]);
         $this->assertSame([], $this->api($this->rm, 'GET', 'api/v1/admin/installations?segment=stale')[1]['data']);
+
+        // A server release published before ring rollouts existed is open in every ring.
+        db_connect()->table('release_rollouts')->update(['mode' => 'STAGED', 'rings' => null]);
+        [, $plan] = $this->server('GET', 'api/v1/server/auto-update/plan', $key);
+        $this->assertSame(['3.4.0', true, 'PLANNED'], [$plan['release']['version'], $plan['ring_open'], $plan['state']]);
     }
 }

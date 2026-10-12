@@ -123,9 +123,11 @@ class ServerRingService
             $state = [];
         }
         $rings = [];
+        // Releases published before ring rollouts existed (no RINGS state) count as open in every ring.
+        $legacy = ($row === null || $row['mode'] !== 'RINGS') && in_array($release['status'], ['PUBLISHED', 'SUPERSEDED'], true) && $release['published_at'] !== null;
         foreach (array_keys(self::RINGS) as $n) {
             $r         = $state['rings'][$n] ?? $state['rings'][(string) $n] ?? [];
-            $rings[$n] = ['opened_at' => $r['opened_at'] ?? null, 'extended_hours' => (int) ($r['extended_hours'] ?? 0)];
+            $rings[$n] = ['opened_at' => $r['opened_at'] ?? ($legacy ? Catalog::iso($release['published_at']) : null), 'extended_hours' => (int) ($r['extended_hours'] ?? 0)];
         }
 
         return ['rings' => $rings, 'pause' => $state['pause'] ?? null, 'gate' => $state['gate'] ?? null, 'ack' => (array) ($state['ack'] ?? [])];
@@ -141,9 +143,10 @@ class ServerRingService
     public function start(array $release): void
     {
         (new RolloutService())->ensure($release, Catalog::channelById((int) $release['channel_id'])['code']);
-        $state                           = $this->state($release);
-        $state['rings'][0]['opened_at']  = Catalog::iso(Catalog::now());
-        $state['pause']                  = null;
+        $state = ['rings' => [], 'pause' => null, 'gate' => null, 'ack' => []];
+        foreach (array_keys(self::RINGS) as $n) {
+            $state['rings'][$n] = ['opened_at' => $n === 0 ? Catalog::iso(Catalog::now()) : null, 'extended_hours' => 0];
+        }
         $this->save($release, $state, [
             'mode' => 'RINGS', 'status' => 'ACTIVE', 'stages' => json_encode(array_values(self::HOLD_HOURS)), 'stage_no' => 0, 'percentage' => 0,
             'auto_advance' => 1, 'auto_pause' => 1, 'thresholds' => json_encode(self::GATE),

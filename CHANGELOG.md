@@ -74,6 +74,8 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   fleet fields; `GET /admin/installations/stats` adds segment counts and
   adoption per release (FR-DL-FLEET-01). The old Installations page is
   replaced by the DL-4 fleet view.
+- Server releases published before ring rollouts existed count as open in
+  every ring, so their plans are not held.
 
 ## [0.3.0] - 2026-10-03
 
