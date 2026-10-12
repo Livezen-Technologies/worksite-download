@@ -87,7 +87,7 @@ class Services extends BaseService
                 \App\Services\KeyRegistry::ciAttestationKeys(),
                 [$cfg->releaseKeyId => $keys->publicKey($cfg->releaseKeyId)],
                 $cfg->requireAttestation || $cfg->isProduction(),
-                $cfg->requireApprovals || $cfg->isProduction(),
+                ($cfg->requireApprovals || $cfg->isProduction()) && ! $cfg->twoPersonRuleDisabled,
             ),
         );
     }

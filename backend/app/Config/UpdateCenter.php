@@ -52,6 +52,15 @@ class UpdateCenter extends BaseConfig
     /** Enforce separation of duties on production Stable. */
     public bool $enforceSod = true;
 
+    /**
+     * Two-person rule switched off (`updatecenter.twoPersonRuleDisabled = true`):
+     * the same staff member may pass QA, approve and publish a release, server
+     * releases included, and the publisher may be the uploader. The approvals
+     * themselves are still required and recorded. The owner's decision
+     * (2026-10-13); off by default.
+     */
+    public bool $twoPersonRuleDisabled = false;
+
     /** Signing driver: local (dev only, in-process key) | remote (signing-service over mTLS). */
     public string $signingDriver = 'local';
     public string $signingServiceUrl = 'https://signing-service:8443';
