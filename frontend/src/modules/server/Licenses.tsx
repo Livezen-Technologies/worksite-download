@@ -8,7 +8,8 @@ import { useDocumentTitle } from '@/hooks/useDocumentHead';
 import { useAuth } from '@/hooks/useAuth';
 import { can } from '@/core/permissions';
 import { cx, formatDate, formatNumber, timeAgo } from '@/core/format';
-import type { License, LicenseBody, LicenseState } from '@/types/api';
+import type { EntitlementValue, License, LicenseBody, LicenseState } from '@/types/api';
+import { Cell } from './Entitlements';
 import { Alert, Badge, Button, Card, Checkbox, EmptyState, FilterSelect, KeyValue, PageHeader, Select, Table, Td, TextArea, TextField, Th, type Tone } from '@/components/ui';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -306,6 +307,7 @@ function LicenceDetail({ id, manage, onClose }: { id: string; manage: boolean; o
               </div>
             </div>
           )}
+          <AddOns id={l.id} manage={manage && l.status !== 'REVOKED'} />
           <h3 className="mt-5 mb-2 text-[13px] font-semibold">Activated servers</h3>
           {(l.activations ?? []).length === 0 ? (
             <p className="text-[12.5px] text-subtle">Not activated on any server yet.</p>
@@ -343,5 +345,51 @@ function LicenceDetail({ id, manage, onClose }: { id: string; manage: boolean; o
         </>
       )}
     </Modal>
+  );
+}
+
+/** Per-licence add-ons and overrides on top of the edition's entitlements. */
+function AddOns({ id, manage }: { id: string; manage: boolean }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: adminKeys.licenseEntitlements(id), queryFn: () => adminApi.licenseEntitlements(id) });
+  const cat = useQuery({ queryKey: adminKeys.entitlements, queryFn: adminApi.entitlements, enabled: manage });
+  const [key, setKey] = useState('');
+  const [value, setValue] = useState<EntitlementValue>(true);
+  const m = useMutation({
+    mutationFn: (body: { values?: Record<string, EntitlementValue>; remove?: string[] }) => adminApi.setLicenseEntitlements(id, body),
+    onSuccess: (r) => {
+      qc.setQueryData(adminKeys.licenseEntitlements(id), r);
+      setKey('');
+      toast.success('Add-ons saved — the server picks them up at its next validation');
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+  const defs = cat.data?.entitlements ?? [];
+  const def = defs.find((d) => d.key === key);
+  const addons = Object.entries(q.data?.addons ?? {});
+  return (
+    <>
+      <h3 className="mt-5 mb-2 text-[13px] font-semibold">Add-ons</h3>
+      {addons.length === 0 ? (
+        <p className="text-[12.5px] text-subtle">None — this licence gets exactly its edition's entitlements.</p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          {addons.map(([k, v]) => (
+            <li key={k} className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-1.5 text-[12.5px]">
+              <span><span className="font-mono">{k}</span> = <strong>{v === null ? 'unlimited' : String(v)}</strong></span>
+              {manage && <Button size="sm" loading={m.isPending} onClick={() => m.mutate({ remove: [k] })}>Remove</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {manage && (
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <Select label="Entitlement" value={key} onChange={(e) => { setKey(e.target.value); const d = defs.find((x) => x.key === e.target.value); setValue(d?.kind === 'bool' ? true : null); }} options={[{ value: '', label: 'Choose…' }, ...defs.map((d) => ({ value: d.key, label: `${d.label} (${d.key})` }))]} />
+          {def && <Cell def={def} value={value} onChange={setValue} label={`Value for ${def.label}`} />}
+          <Button size="sm" variant="primary" disabled={!def} loading={m.isPending} onClick={() => m.mutate({ values: { [key]: value } })}>Add</Button>
+        </div>
+      )}
+    </>
   );
 }

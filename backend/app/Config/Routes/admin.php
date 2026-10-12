@@ -78,6 +78,11 @@ $routes->group('api/v1/admin', ['namespace' => 'App\Controllers\Admin', 'filter'
     // WorkSuite Server licences (the Download Center is the licence authority)
     $routes->get('licenses', 'LicensesController::index', ['filter' => 'perm:license.view']);
     $routes->post('licenses', 'LicensesController::create', ['filter' => 'perm:license.manage']);
+    $routes->get('entitlements', 'EntitlementsController::index', ['filter' => 'perm:license.view']);
+    $routes->post('entitlements', 'EntitlementsController::define', ['filter' => 'perm:license.manage']);
+    $routes->put('entitlements/editions/(:segment)', 'EntitlementsController::edition/$1', ['filter' => 'perm:license.manage']);
+    $routes->get('licenses/(:segment)/entitlements', 'EntitlementsController::licenseShow/$1', ['filter' => 'perm:license.view']);
+    $routes->put('licenses/(:segment)/entitlements', 'EntitlementsController::licenseUpdate/$1', ['filter' => 'perm:license.manage']);
     $routes->get('licenses/(:segment)', 'LicensesController::show/$1', ['filter' => 'perm:license.view']);
     $routes->patch('licenses/(:segment)', 'LicensesController::update/$1', ['filter' => 'perm:license.manage']);
     $routes->post('licenses/(:segment)/renew', 'LicensesController::renew/$1', ['filter' => 'perm:license.manage']);

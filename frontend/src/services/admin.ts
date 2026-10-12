@@ -1,5 +1,8 @@
 import { api, buildUrl, type Query } from './api';
 import type {
+  EntitlementMatrix,
+  EntitlementValue,
+  LicenseEntitlements,
   License,
   LicenseBody,
   AdminApp,
@@ -76,6 +79,8 @@ export const adminKeys = {
   installationStats: ['admin', 'installations', 'stats'] as const,
   licenses: (f: Query) => ['admin', 'licenses', f] as const,
   license: (id: string) => ['admin', 'licenses', 'one', id] as const,
+  licenseEntitlements: (id: string) => ['admin', 'licenses', 'one', id, 'entitlements'] as const,
+  entitlements: ['admin', 'entitlements'] as const,
   serverReleases: (f: Query) => ['admin', 'server-releases', f] as const,
   serverRollout: (id: string) => ['admin', 'server-rollout', id] as const,
   analytics: (kind: string, f: Query) => ['admin', 'analytics', kind, f] as const,
@@ -168,6 +173,11 @@ export const adminApi = {
   updateLicense: (id: string, body: Partial<LicenseBody>) => api.patch<License>(`${A}/licenses/${id}`, body),
   renewLicense: (id: string, body: { expires_at: string; updates_until?: string }) => api.post<License>(`${A}/licenses/${id}/renew`, body),
   licenseStatus: (id: string, action: 'suspend' | 'resume' | 'revoke', body: { reason?: string }) => api.post<License>(`${A}/licenses/${id}/${action}`, body),
+  entitlements: () => api.get<EntitlementMatrix>(`${A}/entitlements`),
+  defineEntitlement: (body: { key: string; label: string; kind: string; category: string; description?: string }) => api.post<EntitlementMatrix>(`${A}/entitlements`, body),
+  setEditionEntitlements: (edition: string, values: Record<string, EntitlementValue>) => api.put<EntitlementMatrix>(`${A}/entitlements/editions/${edition}`, { values }),
+  licenseEntitlements: (id: string) => api.get<LicenseEntitlements>(`${A}/licenses/${id}/entitlements`),
+  setLicenseEntitlements: (id: string, body: { values?: Record<string, EntitlementValue>; remove?: string[] }) => api.put<LicenseEntitlements>(`${A}/licenses/${id}/entitlements`, body),
   deactivateLicense: (id: string, activationId: number, body: { reason?: string }) => api.post<License>(`${A}/licenses/${id}/activations/${activationId}/deactivate`, body),
   fleetAction: (releaseId: string, action: 'start' | 'pause' | 'resume' | 'advance') => api.post<Campaign>(`${A}/fleet/${releaseId}/${action}`, {}),
 
