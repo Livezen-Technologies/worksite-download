@@ -1,6 +1,6 @@
 {
   "name": "@worksuite/bugtrace-react-native",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "WorkSuite Bug Trace SDK for React Native: JS errors, native iOS/Android crashes and NDK tombstones, ANR / app hangs, out-of-memory terminations, shake-to-report (FR-BT-SDK-03).",
   "license": "UNLICENSED",
   "private": true,

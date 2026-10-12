@@ -61,6 +61,7 @@ export const ADMIN_NAV: NavSection[] = [
   {
     label: 'Server',
     items: [
+      { label: 'Server Releases', to: '/admin/server/releases', perm: ['release.view'] },
       { label: 'Installations', to: '/admin/server/installations', perm: ['installations.view'] },
       { label: 'Managed Fleet', to: '/admin/server/fleet', perm: ['fleet.manage', 'installations.view'] },
     ],

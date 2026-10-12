@@ -5,13 +5,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { adminApi, adminKeys } from '@/services/admin';
 import { errorMessage } from '@/services/api';
-import type { AdminRelease, Edition, HealthComponent, ReleaseListResponse } from '@/types/api';
+import type { AdminRelease, HealthComponent, ReleaseListResponse } from '@/types/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useDocumentTitle } from '@/hooks/useDocumentHead';
 import { can } from '@/core/permissions';
 import { compactNumber, formatBytes, formatDate, formatDateTime, formatNumber, formatPct, PLATFORM_LABEL, timeAgo, titleCase } from '@/core/format';
 import { Alert, Badge, BarList, Button, ButtonLink, Card, CardHeader, ColumnChart, EmptyState, ErrorState, FilterSelect, KeyValue, Kpi, PageHeader, ProgressBar, Spinner, Table, Td, Th } from '@/components/ui';
-import { ChannelBadge, HealthBadge, ReleaseStatusBadge, SupportStateBadge } from '@/components/StatusBadges';
+import { ChannelBadge, HealthBadge, ReleaseStatusBadge } from '@/components/StatusBadges';
 import { useToast } from '@/components/ui/Toast';
 import { DownloadPageEditor } from '@/modules/applications/AppDetail';
 
@@ -597,92 +597,6 @@ export function UpdateStatus() {
 }
 
 // ---------------------------------------------------------------- Server
-
-export function Installations() {
-  useDocumentTitle('Installations · Update Center');
-  const [edition, setEdition] = useState('');
-  const [mode, setMode] = useState('');
-  const [status, setStatus] = useState('');
-  const f = { edition: edition || undefined, mode: mode || undefined, status: status || undefined, limit: 200 };
-  const q = useQuery({ queryKey: adminKeys.installations(f), queryFn: () => adminApi.installations(f) });
-  const stats = useQuery({ queryKey: adminKeys.installationStats, queryFn: adminApi.installationStats });
-  return (
-    <>
-      <PageHeader
-        title="Installations"
-        sub="WorkSuite Server installations reporting to the Update Center (no business or user data)."
-        actions={
-          <>
-            <FilterSelect label="Edition" value={edition} onChange={setEdition} options={[{ value: '', label: 'All' }, ...['FREE', 'BUSINESS', 'ENTERPRISE'].map((e) => ({ value: e, label: titleCase(e) }))]} />
-            <FilterSelect label="Mode" value={mode} onChange={setMode} options={[{ value: '', label: 'All' }, ...['MANAGED', 'SELF_HOSTED', 'AIR_GAPPED'].map((e) => ({ value: e, label: titleCase(e.replace('_', ' ')) }))]} />
-            <FilterSelect label="Status" value={status} onChange={setStatus} options={[{ value: '', label: 'All' }, ...['SUPPORTED', 'DEPRECATED', 'UNSUPPORTED', 'FAILED', 'ROLLED_BACK'].map((e) => ({ value: e, label: titleCase(e) }))]} />
-          </>
-        }
-      />
-      {stats.data && (
-        <div className="mb-4 grid gap-3 lg:grid-cols-4">
-          <Kpi label="Pending updates" value={formatNumber(stats.data.pending_updates)} />
-          <Kpi label="Failed runs" value={stats.data.failed_runs.length} tone={stats.data.failed_runs.length ? 'bad' : undefined} />
-          <Kpi label="Rolled back" value={stats.data.rolled_back.length} tone={stats.data.rolled_back.length ? 'warn' : undefined} />
-          <Kpi label="Unsupported" value={formatNumber(stats.data.unsupported)} tone="bad" />
-        </div>
-      )}
-      {stats.data && (
-        <div className="mb-4 grid gap-4 lg:grid-cols-3">
-          {(Object.entries(stats.data.by_edition) as [Edition, { version: string; count: number }[]][]).map(([ed, list]) => (
-            <Card key={ed}>
-              <CardHeader title={`${titleCase(ed)} · versions`} />
-              <div className="px-4 pb-4">
-                <BarList label={`${ed} versions`} items={list.map((v) => ({ label: v.version, value: v.count, display: formatNumber(v.count) }))} />
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-      <Card>
-        {!q.data ? (
-          <Loading q={q} />
-        ) : (
-          <Table label="Installations">
-            <thead>
-              <tr>
-                <Th>Installation</Th>
-                <Th>Edition</Th>
-                <Th>Version</Th>
-                <Th>Mode</Th>
-                <Th>Support</Th>
-                <Th>Last run</Th>
-                <Th>PHP / DB</Th>
-                <Th>Last report</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {q.data.data.map((i) => (
-                <tr key={i.installation_id}>
-                  <Td>
-                    <div className="font-semibold">{i.name}</div>
-                    <div className="font-mono text-[11px] text-subtle">{i.installation_id}</div>
-                  </Td>
-                  <Td>{titleCase(i.edition)}</Td>
-                  <Td className="font-mono">{i.version}</Td>
-                  <Td>{titleCase(i.mode.replace('_', ' '))}</Td>
-                  <Td>
-                    <SupportStateBadge state={i.support_state} />
-                  </Td>
-                  <Td>{i.last_run_status ? <Badge tone={i.last_run_status === 'SUCCEEDED' ? 'green' : i.last_run_status === 'ROLLED_BACK' ? 'amber' : 'red'}>{i.last_run_status.replace('_', ' ')}</Badge> : '—'}</Td>
-                  <Td className="text-[11.5px]">
-                    {i.php_version} · {i.db_version}
-                  </Td>
-                  <Td className="text-[11.5px] text-subtle">{timeAgo(i.last_report_at)}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-    </>
-  );
-}
 
 export function ManagedFleet() {
   useDocumentTitle('Managed Fleet · Update Center');

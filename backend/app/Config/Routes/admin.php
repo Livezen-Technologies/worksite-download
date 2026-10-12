@@ -65,6 +65,15 @@ $routes->group('api/v1/admin', ['namespace' => 'App\Controllers\Admin', 'filter'
     $routes->get('releases/(:segment)', 'ReleasesController::show/$1', ['filter' => 'perm:release.view']);
     $routes->patch('releases/(:segment)', 'ReleasesController::update/$1', ['filter' => 'perm:release.edit']);
 
+    // Server release console (WS-CORE-SYSUPDATE-SRS-001 DL-1..DL-4)
+    $routes->get('server/releases', 'ServerReleasesController::index', ['filter' => 'perm:release.view']);
+    $routes->post('server/releases', 'ServerReleasesController::create', ['filter' => 'perm:release.create']);
+    $routes->post('server/releases/(:segment)/publish', 'ServerReleasesController::publish/$1', ['filter' => 'perm:release.publish']);
+    $routes->get('server/releases/(:segment)/rollout', 'ServerReleasesController::rollout/$1', ['filter' => 'perm:rollout.view']);
+    $routes->post('server/releases/(:segment)/rollout/(pause|resume|extend)', 'ServerReleasesController::rolloutAction/$1/$2', ['filter' => 'perm:release.publish']);
+    $routes->patch('server/releases/(:segment)', 'ServerReleasesController::update/$1', ['filter' => 'perm:release.edit']);
+    $routes->put('server/installations/(:segment)/override', 'ServerReleasesController::override/$1', ['filter' => 'perm:fleet.manage']);
+
     // Server installations & managed fleet
     $routes->get('installations/stats', 'InstallationsController::stats', ['filter' => 'perm:installations.view']);
     $routes->get('installations', 'InstallationsController::index', ['filter' => 'perm:installations.view']);

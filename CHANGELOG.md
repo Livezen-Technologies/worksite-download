@@ -13,6 +13,69 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-12
+### Added
+
+- **Core System Update Service, portal side (WS-CORE-SYSUPDATE-SRS-001 §10)** —
+  `POST /api/v1/server/installations/register` (licence token in,
+  `installation_id` + installation key out; only the key hash is stored,
+  re-registering revokes the old key), `GET /api/v1/server/auto-update/plan`
+  (signed plan, 2-hour expiry: release, upgrade path, ring open time, latest
+  allowed time, holds and cancelled plans) and `GET`/`PUT
+  /api/v1/server/auto-update/policy` (policy mirror, `If-Match` required,
+  `412 POLICY_VERSION_CONFLICT` on a stale version, audited, portal locks
+  win). Responses are signed with the update-response key. Shapes in
+  `openapi/update-center.yaml` and `docs/api-contract.md`.
+- **Tables `server_auto_update_policies` and `server_update_plans` (§11)**,
+  plus installation key and heartbeat columns, server release fields
+  (severity, commit, upgrade notes, migration reversibility, selected
+  editions), ring state and an Enterprise-only `LTS` channel for
+  `lk.worksuite.server`.
+- **Server release console (FR-DL-REL-01..05)** — create a server release with
+  every field, per-edition ZIP uploads (existing tus + `ServerPackageValidator`;
+  `professional` accepted as the FREE edition), checklist items for selected
+  editions and stated migration reversibility, Release Manager publish with
+  step-up MFA and type-to-confirm. Publishing copies each edition package to
+  `server/<edition>/<channel>/<version>+<build>/` with `SHA256SUMS`, a
+  `SHA256SUMS.sig` signed by the signing service (new `CHECKSUMS` document
+  kind) and the signed release manifest.
+- **Rings and fleet health gate (FR-DL-RING-01/02, WF-SU-10)** — rings 0–3
+  hold 24 h, 48 h, 72 h and 14 days (security and critical releases compress
+  to 0 → 2); the scheduler (`server_rings`, every 5 minutes) pauses the next
+  ring on a rollback rate over 2 %, failed runs over 5 %, Bug Trace crash-free
+  under 99.0 % or down 0.5 points, or a new P0/P1 on 3+ installations; the
+  Release Manager can pause, resume or extend; every action is audited.
+- **Withdraw cancels plans (FR-DL-WD-01, AC-SU-14)** — open plans are
+  cancelled at once, the plan and update responses list the withdrawn release,
+  and `request_rollback` asks installations on it to roll back.
+- **Admin screens DL-1 to DL-4** — Server Releases (KPIs, channel and status
+  filters), New server release (form, edition packages with progress and
+  validation states, Markdown notes, checklist, publish), Release rollout
+  (ring cards, health gate, what installations will do, campaign, extend /
+  pause / resume / withdraw) and the Installations fleet (segments, policy,
+  ring, heartbeat, last run, health, adoption per release); new
+  *Server › Server Releases* navigation item.
+
+### Changed
+
+- Server API endpoints also accept `Authorization: Installation <key>`.
+  `GET /server/update` adds `severity`, `minimum_supported_version`,
+  `below_minimum` (an available update becomes `UPDATE_REQUIRED` below the
+  channel minimum, FR-DL-MIN-01), `rollout`, `withdrawn_releases` and
+  `rollback_requested`; `installations/report` accepts Node, MariaDB, disk,
+  policy mode and health; `update-events` accepts `scheduled`, `postponed`
+  and `skipped` plan decisions.
+- Server releases enforce the two-person rule on every channel: whoever gave
+  the QA pass cannot approve or publish (FR-DL-REL-04).
+- Campaign e-mails also go to each installation's registered admin contacts
+  (deduplicated); unapplied security and critical releases are reminded every
+  7 days (FR-DL-NOTIFY-01).
+- `GET /admin/installations` adds version, search and segment filters and the
+  fleet fields; `GET /admin/installations/stats` adds segment counts and
+  adoption per release (FR-DL-FLEET-01). The old Installations page is
+  replaced by the DL-4 fleet view.
+- Server releases published before ring rollouts existed count as open in
+  every ring, so their plans are not held.
 ## [0.4.0] - 2026-10-09
 
 Deployed to download.worksuitecloud.com at 19:27 UTC on 2026-10-09 from
@@ -314,7 +377,8 @@ B1 Bug Trace core).
   never executed; storage credentials are resolved from the secret service
   by reference only; telemetry stores no IP addresses or user identities.
 
-[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...v0.2.0

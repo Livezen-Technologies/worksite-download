@@ -2,6 +2,7 @@
 
 namespace App\Database\Seeds;
 
+use App\Database\ServerChannels;
 use App\Libraries\Ulid;
 use CodeIgniter\Database\Seeder;
 
@@ -103,6 +104,8 @@ class CatalogSeeder extends Seeder
                 }
             }
         }
+
+        ServerChannels::ensureLts($this->db);
 
         if ($this->db->table('storage_providers')->countAllResults() === 0) {
             $this->db->table('storage_providers')->insert([
