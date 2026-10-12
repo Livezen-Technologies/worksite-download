@@ -388,4 +388,35 @@ final class ServerAutoUpdateTest extends UcTestCase
         $this->assertSame('FAILING', $gate['state']);
         $this->assertSame('FAIL', array_column($gate['signals'], 'state', 'key')['new_p0p1']);
     }
+
+    public function testFleetViewHeartbeatAndMinimumVersion(): void
+    {
+        $trust = new TrustFixture('inst_FL1', 'tnt_FL1', 'BUSINESS');
+        $trust->pinRoot();
+        $key = ['Authorization' => 'Installation ' . $this->register($trust, ['version' => '3.3.0'])['installation_key']];
+        // FR-SU-LINK-03 heartbeat with runtime, disk, policy mode and health.
+        [$s] = $this->server('POST', 'api/v1/server/installations/report', $key, ['version' => '3.3.0', 'build' => 33001, 'node_version' => '22.11.0', 'mariadb_version' => '10.11.8', 'disk_free_mb' => 18000, 'policy_mode' => 'AUTO_SECURITY', 'health' => 'OK', 'offline_mode' => false]);
+        $this->assertSame(200, $s);
+        $this->publishedServerRelease('3.4.0', 34012);
+
+        // FR-DL-MIN-01: minimum 3.4.0 on stable → the installation is below it and the update becomes REQUIRED.
+        [$s, $j] = $this->api($this->rm, 'PUT', 'api/v1/admin/applications/server/minimum-versions', ['channel' => 'STABLE', 'platform' => null, 'minimum_version' => '3.4.0', 'enforce_from' => null, 'message' => 'Security baseline', 'reason' => 'Advisory']);
+        $this->assertSame(200, $s, json_encode($j));
+        [, $up] = $this->server('GET', 'api/v1/server/update?version=3.3.0&edition=business&channel=stable', $key);
+        $this->assertSame(['UPDATE_REQUIRED', true, '3.4.0'], [$up['status'], $up['below_minimum'], $up['minimum_supported_version']], json_encode($up));
+        $this->assertSame(['ring' => 2, 'ring_name' => 'broad', 'ring_open' => false], array_intersect_key($up['rollout'], ['ring' => 1, 'ring_name' => 1, 'ring_open' => 1]));
+
+        // FR-DL-FLEET-01: fleet rows carry heartbeat, policy, ring and the below-minimum flag; segments filter.
+        [$s, $list] = $this->api($this->rm, 'GET', 'api/v1/admin/installations?segment=below_minimum');
+        $this->assertSame(200, $s);
+        $row = $list['data'][0];
+        $this->assertSame(['inst_FL1', '22.11.0', 18000, 'OK', 'AUTO_SECURITY', 2, 'broad', true, true], [$row['installation_id'], $row['node_version'], $row['disk_free_mb'], $row['health'], $row['policy_mode'], $row['ring'], $row['ring_name'], $row['below_minimum'], $row['linked']]);
+        $this->assertSame('10.11.8', $row['db_version']);
+        [, $stats] = $this->api($this->rm, 'GET', 'api/v1/admin/installations/stats');
+        $this->assertSame(1, $stats['segments']['below_minimum']);
+        $this->assertSame('3.4.0', $stats['adoption'][0]['version']);
+        [, $console] = $this->api($this->rm, 'GET', 'api/v1/admin/server/releases');
+        $this->assertSame([1, 1, '3.4.0'], [$console['kpis']['linked'], $console['kpis']['below_minimum'], $console['kpis']['minimum_stable']]);
+        $this->assertSame([], $this->api($this->rm, 'GET', 'api/v1/admin/installations?segment=stale')[1]['data']);
+    }
 }

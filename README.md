@@ -83,7 +83,7 @@ php scripts/version.php check
 | Command | Purpose |
 |---|---|
 | `uc:worker` | Queue consumer (package pipeline, manifests, webhooks, mail, Bug Trace) |
-| `uc:scheduler [--loop]` | Scheduled publish, rollout auto-advance / auto-pause, campaign reminders, fleet evaluation, health + storage probes, analytics roll-ups, retention |
+| `uc:scheduler [--loop]` | Scheduled publish, rollout auto-advance / auto-pause, campaign reminders, fleet evaluation, server ring health gate, health + storage probes, analytics roll-ups, retention |
 | `uc:health` | Component health (non-zero exit when DOWN) |
 | `uc:keys [--register-dev]` | Public keys in use |
 | `uc:export [--date=]` | Daily write-once export of configuration, changelogs, manifests and audit log (§13.3) |

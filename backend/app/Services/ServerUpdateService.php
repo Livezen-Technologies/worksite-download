@@ -659,7 +659,8 @@ class ServerUpdateService
 
             return $b;
         };
-        $rows     = $q()->orderBy('last_report_at', 'DESC')->limit($limit, $offset)->get()->getResultArray();
+        $belowOnly = ($filters['segment'] ?? '') === 'below_minimum';
+        $rows      = $belowOnly ? $q()->orderBy('last_report_at', 'DESC')->get()->getResultArray() : $q()->orderBy('last_report_at', 'DESC')->limit($limit, $offset)->get()->getResultArray();
         $policies = array_column($db->table('server_auto_update_policies')->select('installation_id, mode, ring, version')->get()->getResultArray(), null, 'installation_id');
         $minSvc   = new MinimumVersionService();
         $app      = $this->serverApp();
@@ -690,6 +691,13 @@ class ServerUpdateService
                 'ring' => $ring, 'ring_name' => ServerRingService::RINGS[$ring], 'ring_override' => $r['ring'] !== null, 'below_minimum' => $below, 'linked' => ! empty($r['key_hash']),
                 'registered_at' => Catalog::iso($r['registered_at'] ?? null),
             ];
+        }
+
+        if ($belowOnly) {
+            // Minimums are SemVer comparisons per channel, so this segment is filtered here.
+            $data = array_values(array_filter($data, static fn ($d) => $d['below_minimum']));
+
+            return ['data' => array_slice($data, $offset, $limit), 'total' => count($data)];
         }
 
         return ['data' => $data, 'total' => $q()->countAllResults()];
