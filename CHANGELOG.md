@@ -14,6 +14,12 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 ## [Unreleased]
 
 ## [0.5.0] - 2026-10-12
+
+Deployed to download.worksuitecloud.com at 21:20 UTC on 2026-10-12 from
+`bf4df00` (main, which now contains everything the deployed branch had). The
+migration `CreateServerAutoUpdateTables` ran on production; a database dump
+and a copy of the previous code were taken first.
+
 ### Added
 
 - **Core System Update Service, portal side (WS-CORE-SYSUPDATE-SRS-001 §10)** —
