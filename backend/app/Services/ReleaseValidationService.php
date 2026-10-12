@@ -47,9 +47,17 @@ class ReleaseValidationService
 
         if ($app['kind'] === 'SERVER') {
             $editions = array_map(static fn ($p) => $p['edition'], $ready);
-            $missing  = array_diff(['FREE', 'BUSINESS', 'ENTERPRISE'], $editions);
-            $allOnly  = in_array('ALL', $editions, true) && count(array_intersect(['FREE', 'BUSINESS', 'ENTERPRISE'], $editions)) === 0;
-            $add('packages', 'All required editions READY (Free, Business, Enterprise — or one ALL core patch)', $missing === [] || $allOnly ? 'pass' : ($processing ? 'pending' : 'fail'), true, $missing === [] || $allOnly ? implode(', ', $editions) : 'Missing: ' . implode(', ', $missing));
+            $selected = json_decode((string) ($db->table('release_server_meta')->select('editions')->where('release_id', $release['id'])->get()->getRow('editions') ?? ''), true);
+            if (is_array($selected) && $selected !== []) {
+                // WS-CORE-SYSUPDATE FR-DL-REL-03: every selected edition uploaded and valid.
+                $missing = array_values(array_diff($selected, $editions));
+                $labels  = array_map([ServerReleaseConsoleService::class, 'editionLabel'], $missing);
+                $add('packages', 'Every selected edition uploaded and valid (' . implode(', ', array_map([ServerReleaseConsoleService::class, 'editionLabel'], $selected)) . ')', $missing === [] ? 'pass' : ($processing ? 'pending' : 'fail'), true, $missing === [] ? implode(', ', $editions) : 'Missing or invalid: ' . implode(', ', $labels));
+            } else {
+                $missing = array_diff(['FREE', 'BUSINESS', 'ENTERPRISE'], $editions);
+                $allOnly = in_array('ALL', $editions, true) && count(array_intersect(['FREE', 'BUSINESS', 'ENTERPRISE'], $editions)) === 0;
+                $add('packages', 'All required editions READY (Free, Business, Enterprise — or one ALL core patch)', $missing === [] || $allOnly ? 'pass' : ($processing ? 'pending' : 'fail'), true, $missing === [] || $allOnly ? implode(', ', $editions) : 'Missing: ' . implode(', ', $missing));
+            }
         } else {
             $missing = [];
             foreach (Catalog::platforms((int) $app['id']) as $pl) {
@@ -129,6 +137,12 @@ class ReleaseValidationService
             $add('requirements', 'Requirements declared', ! empty($meta['requires']) && $meta['requires'] !== '[]' ? 'pass' : 'fail', true);
             $mig = json_decode((string) ($meta['migrations'] ?? ''), true);
             $add('migrations', 'Migrations listed with one-way flags', is_array($mig) && isset($mig['count']) ? 'pass' : 'fail', true, is_array($mig) ? ($mig['count'] ?? 0) . ' migrations, ' . count($mig['one_way'] ?? []) . ' one-way' : null);
+            if (! empty($meta['severity'])) { // releases created in the server console (FR-DL-REL-01)
+                $rev = $meta['migrations_reversible'];
+                $contradiction = $rev !== null && (int) $rev === 1 && is_array($mig) && ($mig['one_way'] ?? []) !== [];
+                $add('reversibility', 'Migration reversibility stated', $rev === null ? 'fail' : ($contradiction ? 'fail' : 'pass'), true,
+                    $rev === null ? 'State whether every migration is reversible' : ($contradiction ? 'Stated reversible, but the package lists one-way migrations' : ((int) $rev === 1 ? 'All migrations reversible' : 'Has one-way migrations (DB restore on rollback)')));
+            }
             $add('desktop_compat', 'Desktop compatibility range', ! empty($meta['desktop_compat']) ? 'pass' : 'fail', true, $meta['desktop_compat'] ?? null);
             $staging = json_decode((string) ($meta['staging_test'] ?? ''), true);
             $add('staging_test', 'Staging install test passed', ($staging['status'] ?? '') === 'PASSED' ? 'pass' : (($staging['status'] ?? '') === 'FAILED' ? 'fail' : 'pending'), true, $staging['status'] ?? 'Not reported');

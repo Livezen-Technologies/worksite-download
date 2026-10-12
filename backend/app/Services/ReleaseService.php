@@ -267,6 +267,10 @@ class ReleaseService
         if ($channel['code'] === 'STABLE' && $qa === []) {
             throw new ApiException('QA_APPROVAL_MISSING', 'QA must pass before Release Manager approval', 409);
         }
+        if ($this->isServer($release) && in_array($uid, $this->qaApproverIds($release), true)) {
+            // WS-CORE-SYSUPDATE FR-DL-REL-04: QA approves, a different person publishes — on every channel.
+            throw new ApiException('SOD_VIOLATION', 'The QA approver cannot also approve or publish this server release', 403);
+        }
         if ($this->sodApplies($release)) {
             if (in_array($uid, array_map('intval', array_column($qa, 'user_id')), true) && count(array_unique(array_column($qa, 'user_id'))) === 1) {
                 throw new ApiException('SOD_VIOLATION', 'Release Manager approval must come from a different person than QA', 403);
@@ -325,6 +329,9 @@ class ReleaseService
         if (! $system && $this->sodApplies($release) && $uid !== null && in_array($uid, $this->uploaderIds($release), true)) {
             throw new ApiException('SOD_VIOLATION', 'The Release Manager who publishes cannot be the uploader', 403);
         }
+        if (! $system && $uid !== null && $this->isServer($release) && in_array($uid, $this->qaApproverIds($release), true)) {
+            throw new ApiException('SOD_VIOLATION', 'The QA approver cannot also publish this server release', 403);
+        }
         if ($scheduleAt !== null && $scheduleAt !== '') {
             $at = Catalog::toDb($scheduleAt);
             if (strtotime($at . ' UTC') > time() + 60) {
@@ -365,6 +372,9 @@ class ReleaseService
         }
         $db->transComplete();
         (new RolloutService())->start($release);
+        if ($this->isServer($release)) {
+            (new ServerRingService())->start($release); // ring 0 opens (FR-DL-RING-01)
+        }
         $ms->signChannel((int) $release['application_id'], (int) $release['channel_id'], 'Publish ' . $release['version']);
 
         $this->afterStatusChange($release, 'release.published', $reason, $system);
@@ -376,6 +386,13 @@ class ReleaseService
         }
         Queue::push(SubscriberNotifyJob::class, ['release_id' => (int) $release['id']], 'notifications');
         if (Catalog::appById((int) $release['application_id'])['kind'] === 'SERVER') {
+            try {
+                (new ServerReleaseConsoleService($this->ctx()))->publishFiles($release); // FR-DL-REL-05: edition folders + SHA256SUMS(.sig)
+            } catch (\Throwable $e) {
+                db_connect()->table('releases')->where('id', $release['id'])->update(['last_error' => 'Public files: ' . $e->getMessage()]);
+                log_message('error', 'Server release public files failed: ' . $e->getMessage());
+                service('notifier')->notify('release.publish_failed', ['title' => 'Server release files not written', 'body' => $this->label($release) . ': ' . $e->getMessage(), 'link' => '/admin/server/releases/' . $release['public_id']]);
+            }
             (new ServerUpdateService())->onPublished($release);
         }
         service('notifier')->notify('release.published', ['title' => 'Release published', 'body' => $this->label($release) . ' is live.', 'link' => '/admin/releases/' . $release['public_id']], null, false);
@@ -415,7 +432,7 @@ class ReleaseService
     }
 
     /** WF-C14. */
-    public function withdraw(array $release, string $reason, string $confirmVersion): array
+    public function withdraw(array $release, string $reason, string $confirmVersion, bool $requestRollback = false): array
     {
         if ($confirmVersion !== $release['version']) {
             throw ApiException::validation(['confirm_version' => 'Type the version number exactly to confirm']);
@@ -426,7 +443,9 @@ class ReleaseService
         (new ManifestService())->signChannel((int) $release['application_id'], (int) $release['channel_id'], 'Withdraw ' . $release['version']);
         $this->afterStatusChange($release, 'release.withdrawn', $reason);
         if (Catalog::appById((int) $release['application_id'])['kind'] === 'SERVER') {
-            (new ServerUpdateService())->notifyWithdrawn($release, $reason);
+            // FR-DL-WD-01: cancel scheduled auto-runs, then tell installations (webhook) at once.
+            (new ServerAutoUpdateService())->onWithdrawn($release, $reason, $requestRollback);
+            (new ServerUpdateService())->notifyWithdrawn($release, $reason, $requestRollback);
         }
         service('notifier')->notify('release.withdrawn', ['title' => 'Release withdrawn', 'body' => $this->label($release) . ': ' . $reason . ($lowered ? " Minimum version lowered to {$lowered}." : ''), 'link' => '/admin/releases/' . $release['public_id']]);
         if (class_exists(\App\Services\BugTrace\BugTraceReleaseHooks::class) && method_exists(\App\Services\BugTrace\BugTraceReleaseHooks::class, 'onReleaseWithdrawn')) {
@@ -593,6 +612,17 @@ class ReleaseService
         $cfg = config('UpdateCenter');
 
         return ($cfg->enforceSod || $cfg->isProduction()) && Catalog::channelById((int) $release['channel_id'])['code'] === 'STABLE';
+    }
+
+    private function isServer(array $release): bool
+    {
+        return Catalog::appById((int) $release['application_id'])['kind'] === 'SERVER';
+    }
+
+    /** @return list<int> users who gave a QA pass */
+    public function qaApproverIds(array $release): array
+    {
+        return array_values(array_unique(array_map('intval', array_column(db_connect()->table('release_approvals')->select('user_id')->where('release_id', $release['id'])->where('kind', 'QA')->where('decision', 'PASS')->get()->getResultArray(), 'user_id'))));
     }
 
     /** @return list<int> */

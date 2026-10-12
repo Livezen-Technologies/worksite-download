@@ -17,6 +17,7 @@ use App\Services\PublicCatalogService;
 use App\Services\ReleaseService;
 use App\Services\ReleaseValidationService;
 use App\Services\RolloutService;
+use App\Services\ServerRingService;
 use App\Services\ServerUpdateService;
 use App\Services\TelemetryService;
 use App\Services\UpdateResolverService;
@@ -221,7 +222,7 @@ class ReleasesController extends BaseApiController
         $b = $this->body();
         $this->reason($b);
         $this->requireStepUp();
-        $r = $this->svc()->withdraw($this->load($id), (string) $b['reason'], (string) ($b['confirm_version'] ?? ''));
+        $r = $this->svc()->withdraw($this->load($id), (string) $b['reason'], (string) ($b['confirm_version'] ?? ''), ! empty($b['request_rollback']));
 
         return self::present($r) + ['minimum_lowered_to' => $r['minimum_lowered_to'] ?? null];
     }
@@ -478,6 +479,11 @@ class ReleasesController extends BaseApiController
             'staging_test'        => json_decode((string) ($m['staging_test'] ?? 'null'), true),
             'admin_notice'        => $m['admin_notice'] ?? null,
             'advisory'            => $m['advisory'] ?? null,
+            'severity'            => $m === [] ? null : ServerRingService::severity($r, $m),
+            'commit'              => $m['commit_sha'] ?? null,
+            'upgrade_notes'       => $m['upgrade_notes'] ?? null,
+            'migrations_reversible' => isset($m['migrations_reversible']) ? (bool) $m['migrations_reversible'] : null,
+            'editions'            => json_decode((string) ($m['editions'] ?? 'null'), true),
         ];
     }
 
