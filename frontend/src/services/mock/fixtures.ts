@@ -854,6 +854,18 @@ export const INSTALLATIONS: Installation[] = NAMES.map((n, i) => {
     last_run_status: i === 3 ? 'ROLLED_BACK' : i === 7 ? 'FAILED' : 'SUCCEEDED',
     php_version: ['8.2.24', '8.3.12', '8.3.11'][i % 3],
     db_version: ['MariaDB 10.11', 'MySQL 8.0.39', 'MariaDB 10.6'][i % 3],
+    node_version: '22.11.0',
+    disk_free_mb: 18_000 - i * 900,
+    health: i === 7 ? 'DEGRADED' : 'OK',
+    offline_mode: i % 5 === 4,
+    policy_mode: i % 5 === 4 ? 'NOTIFY' : (['AUTO_MINOR', 'NOTIFY', 'AUTO_SECURITY'] as const)[i % 3],
+    policy_version: 1 + (i % 4),
+    ring: i === 10 || (i % 2 === 1 && i % 5 !== 4) ? 0 : ([1, 2, 3] as const)[i % 3],
+    ring_name: (['canary', 'early', 'broad', 'conservative'] as const)[i === 10 || (i % 2 === 1 && i % 5 !== 4) ? 0 : ([1, 2, 3] as const)[i % 3]],
+    ring_override: false,
+    below_minimum: version === '3.1.9',
+    linked: true,
+    registered_at: ago(60 * 24 * 30),
   };
 });
 

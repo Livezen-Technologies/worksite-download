@@ -47,4 +47,20 @@ describe('mock API (contract shapes + critical-action rules)', () => {
     expect(draft.checklist.passed).toBe(false);
     expect(draft.allowed_actions).toContain('upload');
   });
+
+  it('serves the server release console (DL-1…DL-4) in mock mode', () => {
+    const list = call('GET', '/admin/server/releases?channel=STABLE');
+    expect(list.kpis.linked).toBeGreaterThan(0);
+    expect(list.data.every((r: any) => r.channel === 'STABLE' && r.severity && r.ring_summary)).toBe(true);
+    const created = call('POST', '/admin/server/releases', { version: '3.5.0', build: 35001, channel: 'STABLE', severity: 'SECURITY', editions: ['BUSINESS'], migrations_reversible: true, notes: '## Security\n- Fix' });
+    expect(created.severity).toBe('SECURITY');
+    expect(call('GET', `/admin/releases/${created.id}`).packages.map((p: any) => p.edition)).toEqual(['BUSINESS']);
+    const published = list.data.find((r: any) => r.status === 'PUBLISHED');
+    const rollout = call('GET', `/admin/server/releases/${published.id}/rollout`);
+    expect(rollout.rings).toHaveLength(4);
+    expect(call('POST', `/admin/server/releases/${published.id}/rollout/pause`, { reason: 'x' }, { 'x-mfa-token': '123456' }).pause.kind).toBe('MANUAL');
+    expect(call('GET', '/admin/installations/stats').segments.all).toBeGreaterThan(0);
+    expect(call('GET', '/admin/installations?segment=below_minimum').data.every((i: any) => i.below_minimum)).toBe(true);
+  });
 });
+

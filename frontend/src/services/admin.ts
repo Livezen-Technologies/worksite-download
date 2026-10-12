@@ -19,6 +19,7 @@ import type {
   CreatePackageBody,
   CreatePackageResponse,
   CreateReleaseBody,
+  CreateServerReleaseBody,
   Dashboard,
   DeviceAnalytics,
   DownloadAnalytics,
@@ -41,6 +42,8 @@ import type {
   RolesMatrix,
   Rollout,
   ServerMeta,
+  ServerReleasesResponse,
+  ServerRollout,
   Settings,
   SigningKey,
   StorageOverview,
@@ -69,6 +72,8 @@ export const adminKeys = {
   pkg: (releaseId: string, pkgId: string) => ['admin', 'release', releaseId, 'pkg', pkgId] as const,
   installations: (f: Query) => ['admin', 'installations', f] as const,
   installationStats: ['admin', 'installations', 'stats'] as const,
+  serverReleases: (f: Query) => ['admin', 'server-releases', f] as const,
+  serverRollout: (id: string) => ['admin', 'server-rollout', id] as const,
   analytics: (kind: string, f: Query) => ['admin', 'analytics', kind, f] as const,
   users: ['admin', 'users'] as const,
   roles: ['admin', 'roles'] as const,
@@ -113,7 +118,7 @@ export const adminApi = {
   release: (id: string) => api.get<AdminReleaseDetail>(rel(id)),
   updateRelease: (id: string, body: Partial<AdminRelease>) => api.patch<AdminRelease>(rel(id), body),
   checklist: (id: string) => api.get<Checklist>(`${rel(id)}/checklist`),
-  saveChangelog: (id: string, body: { locale?: string; summary: string; highlights: string[]; sections: ChangelogSections; markdown?: string }) =>
+  saveChangelog: (id: string, body: { locale?: string; summary: string; highlights: string[]; sections?: ChangelogSections; markdown?: string }) =>
     api.put<Changelog>(`${rel(id)}/changelog`, body),
   submitTest: (id: string) => api.post<AdminRelease>(`${rel(id)}/submit-test`),
   startTesting: (id: string) => api.post<AdminRelease>(`${rel(id)}/start-testing`),
@@ -154,6 +159,17 @@ export const adminApi = {
   installations: (q: Query) => api.get<ListResponse<Installation>>(`${A}/installations`, q),
   installationStats: () => api.get<InstallationStats>(`${A}/installations/stats`),
   fleetAction: (releaseId: string, action: 'start' | 'pause' | 'resume' | 'advance') => api.post<Campaign>(`${A}/fleet/${releaseId}/${action}`, {}),
+
+  // server release console (DL-1…DL-4)
+  serverReleases: (q: Query) => api.get<ServerReleasesResponse>(`${A}/server/releases`, q),
+  createServerRelease: (body: CreateServerReleaseBody) => api.post<AdminRelease>(`${A}/server/releases`, body),
+  updateServerRelease: (id: string, body: Partial<Pick<CreateServerReleaseBody, 'severity' | 'commit' | 'upgrade_notes' | 'migrations_reversible' | 'editions'>>) =>
+    api.patch<AdminRelease>(`${A}/server/releases/${encodeURIComponent(id)}`, body),
+  publishServerRelease: (id: string, body: { confirm_version: string; reason?: string }) => api.post<AdminRelease>(`${A}/server/releases/${encodeURIComponent(id)}/publish`, body),
+  serverRollout: (id: string) => api.get<ServerRollout>(`${A}/server/releases/${encodeURIComponent(id)}/rollout`),
+  serverRolloutAction: (id: string, action: 'pause' | 'resume' | 'extend', body: { reason?: string; hours?: number }) =>
+    api.post<ServerRollout>(`${A}/server/releases/${encodeURIComponent(id)}/rollout/${action}`, body),
+  withdrawServerRelease: (id: string, body: { reason: string; confirm_version: string; request_rollback: boolean }) => api.post<AdminRelease>(`${rel(id)}/withdraw`, body),
 
   // analytics
   downloads: (q: Query) => api.get<DownloadAnalytics>(`${A}/analytics/downloads`, q),

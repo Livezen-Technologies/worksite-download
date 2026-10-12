@@ -6,7 +6,7 @@
 export type Platform = 'windows' | 'macos' | 'linux' | 'android' | 'ios' | 'server';
 export type Arch = 'x64' | 'arm64' | 'universal' | 'any';
 export type PackageType = 'exe' | 'msi' | 'dmg' | 'pkg' | 'zip' | 'appimage' | 'deb' | 'rpm' | 'apk' | 'aab' | 'ipa';
-export type ChannelCode = 'STABLE' | 'BETA' | 'DEV' | 'INTERNAL' | 'CUSTOM';
+export type ChannelCode = 'STABLE' | 'BETA' | 'DEV' | 'INTERNAL' | 'CUSTOM' | 'LTS';
 export type ReleaseStatus =
   | 'DRAFT'
   | 'UPLOADING'
@@ -515,6 +515,8 @@ export interface AdminPackage {
   health: 'OK' | 'DEGRADED' | 'UNKNOWN';
   minimum_os_version: string | null;
   active_revision: Revision | null;
+  /** A newer revision still being processed (shown live while validation runs). */
+  processing_revision?: Revision | null;
   revisions: Revision[];
 }
 
@@ -585,6 +587,12 @@ export interface ServerMeta {
   staging_test: { status: 'PASSED' | 'FAILED' | 'PENDING'; url?: string; editions?: Partial<Record<Edition, string>> } | null;
   admin_notice: string | null;
   advisory: string | null;
+  /** Server release console fields (WS-CORE-SYSUPDATE §4); absent on older responses. */
+  severity?: ServerSeverity | null;
+  commit?: string | null;
+  upgrade_notes?: string | null;
+  migrations_reversible?: boolean | null;
+  editions?: Edition[] | null;
 }
 
 export type DeploymentMode = 'MANAGED' | 'SELF_HOSTED' | 'AIR_GAPPED';
@@ -742,6 +750,19 @@ export interface Installation {
   last_run_status: string | null;
   php_version: string | null;
   db_version: string | null;
+  /** Fleet fields (WS-CORE-SYSUPDATE FR-DL-FLEET-01); optional for older responses. */
+  node_version?: string | null;
+  disk_free_mb?: number | null;
+  health?: 'OK' | 'DEGRADED' | 'DOWN' | null;
+  offline_mode?: boolean;
+  policy_mode?: PolicyMode | null;
+  policy_version?: number | null;
+  ring?: number;
+  ring_name?: 'canary' | 'early' | 'broad' | 'conservative';
+  ring_override?: boolean;
+  below_minimum?: boolean;
+  linked?: boolean;
+  registered_at?: string | null;
 }
 
 export interface InstallationStats {
@@ -750,6 +771,107 @@ export interface InstallationStats {
   failed_runs: { installation_id: string; name?: string; version?: string; error?: string; at?: string }[];
   rolled_back: { installation_id: string; name?: string; version?: string; at?: string }[];
   unsupported: number;
+  /** DL-4 segment counts. */
+  segments?: FleetSegments;
+  /** DL-4 adoption per release. */
+  adoption?: { release_id: string; version: string; status: ReleaseStatus; channel: ChannelCode; installations: number; pct: number }[];
+}
+
+// ---------------------------------------------------------------- server release console (WS-CORE-SYSUPDATE §4, DL-1…DL-4)
+
+export type ServerSeverity = 'PATCH' | 'MINOR' | 'MAJOR' | 'SECURITY' | 'CRITICAL';
+export type PolicyMode = 'OFF' | 'NOTIFY' | 'AUTO_SECURITY' | 'AUTO_MINOR' | 'AUTO_ALL';
+export type ServerChannel = 'STABLE' | 'BETA' | 'LTS';
+
+export interface ServerReleaseKpis {
+  linked: number;
+  online: number;
+  offline: number;
+  latest_stable: string | null;
+  on_latest_stable: number;
+  on_latest_pct: number;
+  below_minimum: number;
+  minimum_stable: string | null;
+  rollbacks_30d: number;
+  rollback_versions: string[];
+}
+
+export type ServerReleaseRow = AdminRelease & {
+  severity: ServerSeverity;
+  editions: Edition[];
+  editions_label: string;
+  ring_summary: string;
+  adoption_pct: number;
+  installations_on_version: number;
+  commit: string | null;
+};
+
+export interface ServerReleasesResponse {
+  kpis: ServerReleaseKpis;
+  data: ServerReleaseRow[];
+  minimums: { channel: ServerChannel; minimum_version: string | null; enforce_from: string | null }[];
+}
+
+export interface CreateServerReleaseBody {
+  version: string;
+  build: number;
+  commit?: string;
+  channel: ServerChannel;
+  severity: ServerSeverity;
+  min_from_version?: string;
+  notes?: string;
+  known_issues?: string;
+  upgrade_notes?: string;
+  migrations_reversible: boolean | null;
+  editions: Edition[];
+  desktop_compat?: string;
+  admin_notice?: string;
+}
+
+export type RingState = 'DONE' | 'OPEN' | 'PAUSED' | 'WAITING';
+export interface ServerRing {
+  ring: 0 | 1 | 2 | 3;
+  key: 'canary' | 'early' | 'broad' | 'conservative';
+  name: string;
+  state: RingState;
+  opened_at: string | null;
+  opens_at: string | null;
+  hold_hours: number;
+  extended_hours: number;
+  hold_ends_at: string | null;
+  installations: number;
+  updated: number;
+  detail: string;
+}
+
+export interface GateSignal {
+  key: 'rollback_rate' | 'failed_runs' | 'crash_free' | 'new_p0p1';
+  label: string;
+  value: number | null;
+  display: string;
+  threshold: string;
+  state: 'OK' | 'WATCH' | 'FAIL';
+}
+
+export interface ServerRollout {
+  release: { id: string; version: string; build: number; status: ReleaseStatus; channel: ChannelCode; severity: ServerSeverity; published_at: string | null; withdrawn_at: string | null };
+  status: 'PENDING' | 'ACTIVE' | 'PAUSED' | 'DONE';
+  mode: 'RINGS' | string | null;
+  compressed: boolean;
+  pause: { kind: 'GATE' | 'MANUAL'; reason: string; at: string; by: string; ring: number | null } | null;
+  rings: ServerRing[];
+  gate: { state: 'PASSING' | 'WATCH' | 'FAILING'; signals: GateSignal[]; reasons: string[]; runs: number; evaluated_at: string };
+  outcomes: { updated: number; auto_scheduled: number; waiting_for_admin: number; postponed: number; offline: number; held: number; skipped: number };
+  campaign: (Campaign & { delivered: { in_app: number; email: number } }) | null;
+}
+
+export interface FleetSegments {
+  all: number;
+  on_latest: number;
+  latest_stable: string | null;
+  below_minimum: number;
+  on_hold: number;
+  stale: number;
 }
 
 // ---------------------------------------------------------------- analytics

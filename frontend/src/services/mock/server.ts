@@ -15,6 +15,8 @@ import type {
   Checklist,
   ChecklistItem,
   Edition,
+  GateSignal,
+  Installation,
   ManifestInfo,
   Me,
   PreviousVersion,
@@ -23,6 +25,9 @@ import type {
   PublicReleaseDetail,
   ReleaseAction,
   Revision,
+  RingState,
+  ServerRollout,
+  ServerSeverity,
 } from '@/types/api';
 import {
   PERMISSIONS,
@@ -1279,7 +1284,14 @@ route('GET', '/admin/installations', (req) => {
   const ed = req.query.get('edition');
   const mode = req.query.get('mode');
   const status = req.query.get('status');
-  const rows = state.installations.filter((i) => (!ed || i.edition === ed) && (!mode || i.mode === mode) && (!status || i.support_state === status || i.last_run_status === status));
+  const version = req.query.get('version');
+  const segment = req.query.get('segment');
+  const q = (req.query.get('q') ?? '').toLowerCase();
+  const stale = (i: Installation) => !i.offline_mode && (!i.last_report_at || Date.now() - new Date(i.last_report_at).getTime() > 86_400_000);
+  const rows = state.installations
+    .filter((i) => (!ed || i.edition === ed) && (!mode || i.mode === mode) && (!status || i.support_state === status || i.last_run_status === status))
+    .filter((i) => (!version || i.version === version) && (!q || `${i.name} ${i.installation_id}`.toLowerCase().includes(q)))
+    .filter((i) => !segment || (segment === 'below_minimum' ? i.below_minimum : segment === 'on_hold' ? i.last_run_status === 'ROLLED_BACK' : segment === 'stale' ? stale(i) : segment === 'offline' ? i.offline_mode : true));
   return paginate(rows, req.query);
 });
 route('GET', '/admin/installations/stats', () => {
@@ -1296,7 +1308,146 @@ route('GET', '/admin/installations/stats', () => {
     failed_runs: state.installations.filter((i) => i.last_run_status === 'FAILED').map((i) => ({ installation_id: i.installation_id, name: i.name, version: '3.3.2', error: 'Pre-check failed: PHP extension sodium missing', at: i.last_report_at })),
     rolled_back: state.installations.filter((i) => i.last_run_status === 'ROLLED_BACK').map((i) => ({ installation_id: i.installation_id, name: i.name, version: '3.3.2', at: i.last_report_at })),
     unsupported: state.installations.filter((i) => i.support_state === 'UNSUPPORTED').length * 11,
+    segments: {
+      all: state.installations.length,
+      on_latest: state.installations.filter((i) => i.version === '3.3.2').length,
+      latest_stable: '3.3.2',
+      below_minimum: state.installations.filter((i) => i.below_minimum).length,
+      on_hold: state.installations.filter((i) => i.last_run_status === 'ROLLED_BACK').length,
+      stale: state.installations.filter((i) => !i.offline_mode && (!i.last_report_at || Date.now() - new Date(i.last_report_at).getTime() > 86_400_000)).length,
+    },
+    adoption: serverReleases()
+      .filter((r) => ['PUBLISHED', 'SUPERSEDED', 'WITHDRAWN', 'PAUSED'].includes(r.status))
+      .map((r) => {
+        const n = state.installations.filter((i) => i.version === r.version).length;
+        return { release_id: r.id, version: r.version, status: r.status, channel: r.channel, installations: n, pct: Math.round((1000 * n) / Math.max(1, state.installations.length)) / 10 };
+      }),
   };
+});
+
+// ---- server release console (WS-CORE-SYSUPDATE DL-1…DL-4)
+const RING_HOLD = [24, 48, 72, 336];
+const RING_NAMES = ['Ring 0 · Canary', 'Ring 1 · Early', 'Ring 2 · Broad', 'Ring 3 · Conservative'];
+const ringState: Record<string, { opened: (string | null)[]; extended: number[]; pause: ServerRollout['pause'] }> = {};
+function serverReleases() {
+  return state.releases.filter((r) => r.app.kind === 'SERVER');
+}
+function severityOf(r: AdminReleaseDetail): ServerSeverity {
+  if (r.server_meta?.severity) return r.server_meta.severity;
+  if (r.release_type === 'CRITICAL') return 'CRITICAL';
+  const [, minor, patch] = r.version.split('.').map(Number);
+  return patch ? 'PATCH' : minor ? 'MINOR' : 'MAJOR';
+}
+function rings(r: AdminReleaseDetail) {
+  const published = r.published_at ? new Date(r.published_at).getTime() : Date.now();
+  return (ringState[r.id] ??= { opened: [new Date(published).toISOString(), new Date(published + 24 * 3_600_000).toISOString(), null, null], extended: [0, 0, 0, 0], pause: null });
+}
+function serverRow(r: AdminReleaseDetail) {
+  const eds = r.packages.filter((p) => p.status === 'READY').map((p) => p.edition!).filter(Boolean);
+  const editions = eds.length ? eds : ((r.server_meta?.editions ?? ['FREE', 'BUSINESS', 'ENTERPRISE']) as Edition[]);
+  const label = (e: string) => (e === 'FREE' ? 'Professional' : e === 'ALL' ? 'All editions (core patch)' : e.charAt(0) + e.slice(1).toLowerCase());
+  const on = state.installations.filter((i) => i.version === r.version).length;
+  const rs = ['PUBLISHED', 'PAUSED', 'SUPERSEDED', 'WITHDRAWN'].includes(r.status) ? rings(r) : null;
+  const cur = rs ? rs.opened.reduce((m, o, i) => (o ? i : m), 0) : 0;
+  const summary = !rs ? (r.status === 'APPROVED' ? 'Ready to publish' : ['READY_FOR_TEST', 'TESTING'].includes(r.status) ? 'Waiting for QA' : 'Draft') : r.status === 'WITHDRAWN' ? `Stopped at ring ${cur}` : rs.pause ? `Paused at ring ${cur}` : r.status === 'SUPERSEDED' ? 'Ring 3 · complete' : `Ring ${cur} · open`;
+  return { ...listRelease(r), severity: severityOf(r), editions, editions_label: editions.map(label).join(', '), ring_summary: summary, adoption_pct: Math.round((1000 * on) / Math.max(1, state.installations.length)) / 10, installations_on_version: on, commit: r.server_meta?.commit ?? null };
+}
+const GROUPS: Record<string, string[]> = { draft: ['DRAFT', 'UPLOADING', 'READY_FOR_TEST'], testing: ['TESTING', 'APPROVED'], published: ['PUBLISHED', 'SUPERSEDED'], paused: ['PAUSED'], withdrawn: ['WITHDRAWN'] };
+route('GET', '/admin/server/releases', (req) => {
+  requirePerm('release.view');
+  const ch = req.query.get('channel');
+  const st = req.query.get('status');
+  const rows = serverReleases()
+    .filter((r) => (!ch || r.channel === ch) && (!st || (GROUPS[st] ?? [st]).includes(r.status)))
+    .sort((a, b) => compareSemver(b.version, a.version))
+    .map(serverRow);
+  const inst = state.installations;
+  const onLatest = inst.filter((i) => i.version === '3.3.2').length;
+  return {
+    kpis: { linked: inst.length, online: inst.filter((i) => !i.offline_mode).length, offline: inst.filter((i) => i.offline_mode).length, latest_stable: '3.3.2', on_latest_stable: onLatest, on_latest_pct: Math.round((1000 * onLatest) / inst.length) / 10, below_minimum: inst.filter((i) => i.below_minimum).length, minimum_stable: '3.2.0', rollbacks_30d: inst.filter((i) => i.last_run_status === 'ROLLED_BACK').length, rollback_versions: ['3.3.2'] },
+    data: rows,
+    minimums: [{ channel: 'STABLE', minimum_version: '3.2.0', enforce_from: null }, { channel: 'BETA', minimum_version: null, enforce_from: null }, { channel: 'LTS', minimum_version: '3.0.0', enforce_from: null }],
+  };
+});
+route('POST', '/admin/server/releases', (req) => {
+  const b = req.body ?? {};
+  const out = handleMock({ method: 'POST', path: '/admin/releases', query: new URLSearchParams(), headers: req.headers, body: { app_id: 'app_server', version: b.version, build: b.build, channel: b.channel, notes: b.notes, known_issues: b.known_issues, release_type: b.severity === 'CRITICAL' ? 'CRITICAL' : b.severity === 'SECURITY' ? 'MANDATORY' : 'RECOMMENDED' } });
+  const created = out.body as { id: string };
+  const r = releaseById(created.id);
+  const editions = (b.editions ?? ['FREE', 'BUSINESS', 'ENTERPRISE']) as Edition[];
+  r.packages = r.packages.filter((p) => editions.includes(p.edition as Edition));
+  r.server_meta = { ...r.server_meta!, min_from_version: b.min_from_version ?? null, desktop_compat: b.desktop_compat ?? null, admin_notice: b.admin_notice ?? null, severity: b.severity, commit: b.commit ?? null, upgrade_notes: b.upgrade_notes ?? null, migrations_reversible: b.migrations_reversible ?? null, editions };
+  if (b.notes) r.changelog = { ...r.changelog, summary: `WorkSuite Server ${r.version}`, markdown: b.notes, html: renderMarkdown(b.notes), sections: { ...emptySections(), ...(parseSections(b.notes) as Partial<ChangelogSections>) } };
+  return ok({ ...listRelease(r), severity: b.severity }, 201);
+});
+route('PATCH', '/admin/server/releases/{id}', (req, p) => {
+  requirePerm('release.edit');
+  const r = releaseById(p.id);
+  r.server_meta = { ...r.server_meta!, ...req.body };
+  return { ...listRelease(r), severity: severityOf(r) };
+});
+route('POST', '/admin/server/releases/{id}/publish', (req, p) => {
+  const u = requirePerm('release.publish');
+  const r = releaseById(p.id);
+  if (req.body?.confirm_version !== r.version) throw new MockHttpError(422, 'VALIDATION_FAILED', 'Type the version to confirm', { confirm_version: `Type ${r.version} to confirm` });
+  if (r.approvals.some((a) => a.kind === 'QA' && a.decision === 'PASS' && a.user === u.name)) throw new MockHttpError(403, 'SOD_VIOLATION', 'The QA approver cannot also publish this server release');
+  requireMfa(req);
+  if (r.status === 'TESTING') r.status = 'APPROVED';
+  const res = handleMock({ method: 'POST', path: `/admin/releases/${p.id}/publish`, query: new URLSearchParams(), headers: req.headers, body: req.body });
+  delete ringState[r.id];
+  ringState[r.id] = { opened: [new Date().toISOString(), null, null, null], extended: [0, 0, 0, 0], pause: null };
+  return res.body;
+});
+function rolloutView(r: AdminReleaseDetail): ServerRollout {
+  const rs = rings(r);
+  const compressed = ['SECURITY', 'CRITICAL'].includes(severityOf(r));
+  const now = Date.now();
+  const byRing = [0, 1, 2, 3].map((n) => state.installations.filter((i) => (i.ring ?? 2) === n));
+  const ringsOut = [0, 1, 2, 3].map((n) => {
+    const opened = rs.opened[n];
+    const holdEnd = opened ? new Date(opened).getTime() + (RING_HOLD[n] + rs.extended[n]) * 3_600_000 : null;
+    const next = rs.opened.findIndex((o) => !o);
+    const st: RingState = opened ? (holdEnd! <= now ? 'DONE' : 'OPEN') : rs.pause && next === n ? 'PAUSED' : 'WAITING';
+    const prev = n === 0 ? null : compressed && n === 2 ? 0 : n - 1;
+    const detail = st === 'DONE' ? `${n === 0 ? 'Livezen-hosted and internal · ' : ''}held ${RING_HOLD[n] + rs.extended[n]} h` : st === 'OPEN' ? `Next ring opens in ${Math.max(0, Math.ceil((holdEnd! - now) / 3_600_000))} h` : st === 'PAUSED' ? `Paused: ${rs.pause?.reason ?? ''}` : prev === null ? 'Opens at publish' : `Opens after ${RING_HOLD[prev] + rs.extended[prev]} h of ring ${prev}`;
+    const updated = byRing[n].filter((i) => compareSemver(i.version, r.version) >= 0).length;
+    return { ring: n as 0 | 1 | 2 | 3, key: (['canary', 'early', 'broad', 'conservative'] as const)[n], name: RING_NAMES[n], state: st, opened_at: opened, opens_at: opened, hold_hours: RING_HOLD[n], extended_hours: rs.extended[n], hold_ends_at: holdEnd ? new Date(holdEnd).toISOString() : null, installations: byRing[n].length, updated, detail };
+  });
+  const signals: GateSignal[] = [
+    { key: 'rollback_rate', label: 'Rollback rate', value: 0, display: '0 %', threshold: 'over 2 %', state: 'OK' },
+    { key: 'failed_runs', label: 'Failed runs', value: 3.2, display: '1 of 31 · 3.2 %', threshold: 'over 5 %', state: 'WATCH' },
+    { key: 'crash_free', label: 'Crash-free sessions', value: 99.6, display: '99.6 %', threshold: 'under 99.0 %, or down 0.5 pt', state: 'OK' },
+    { key: 'new_p0p1', label: 'New P0/P1 on 3+ installations', value: 0, display: '0', threshold: '1 or more', state: 'OK' },
+  ];
+  return {
+    release: { id: r.id, version: r.version, build: r.build, status: r.status, channel: r.channel, severity: severityOf(r), published_at: r.published_at, withdrawn_at: r.withdrawn_at },
+    status: r.status === 'WITHDRAWN' ? 'DONE' : rs.pause ? 'PAUSED' : 'ACTIVE',
+    mode: 'RINGS',
+    compressed,
+    pause: rs.pause,
+    rings: ringsOut,
+    gate: { state: 'WATCH', signals, reasons: [], runs: 31, evaluated_at: new Date().toISOString() },
+    outcomes: { updated: 30, auto_scheduled: 27, waiting_for_admin: 74, postponed: 5, offline: 12, held: 0, skipped: 0 },
+    campaign: r.campaign ? { ...r.campaign, delivered: { in_app: 136, email: 211 } } : null,
+  };
+}
+route('GET', '/admin/server/releases/{id}/rollout', (_r, p) => {
+  requirePerm('rollout.view');
+  return rolloutView(releaseById(p.id));
+});
+route('POST', '/admin/server/releases/{id}/rollout/{action}', (req, p) => {
+  const u = requirePerm('release.publish');
+  requireMfa(req);
+  const r = releaseById(p.id);
+  const rs = rings(r);
+  const next = rs.opened.findIndex((o) => !o);
+  const cur = rs.opened.reduce((m, o, i) => (o ? i : m), 0);
+  if (p.action === 'pause') rs.pause = { kind: 'MANUAL', reason: req.body?.reason ?? '', at: new Date().toISOString(), by: u.name, ring: next < 0 ? null : next };
+  else if (p.action === 'resume') rs.pause = null;
+  else if (p.action === 'extend') rs.extended[cur] += Number(req.body?.hours ?? 24);
+  else throw new MockHttpError(404, 'UNKNOWN_ACTION', 'Unknown ring action');
+  log(`server.ring_${p.action}`, 'release', r.id, req.body?.reason ?? null);
+  return rolloutView(r);
 });
 route('POST', '/admin/fleet/{release}/{action}', (req, p) => {
   requirePerm('fleet.manage');
