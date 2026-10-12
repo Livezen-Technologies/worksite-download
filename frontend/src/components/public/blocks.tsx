@@ -79,7 +79,7 @@ export function AppHero({ eyebrow, title, subtitle, children, art = true }: { ey
 
 // ---------------------------------------------------------------- LatestVersion
 
-export function LatestVersion({ app, release, breadcrumb }: { app: AppSummary; release: PublicReleaseDetail | null; breadcrumb?: ReactNode }) {
+export function LatestVersion({ app, release, breadcrumb, label = 'Latest stable' }: { app: AppSummary; release: PublicReleaseDetail | null; breadcrumb?: ReactNode; label?: string }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="flex items-center gap-4">
@@ -92,7 +92,7 @@ export function LatestVersion({ app, release, breadcrumb }: { app: AppSummary; r
       {release && (
         <dl className="flex gap-8">
           <div>
-            <dt className="label-caps">Latest stable</dt>
+            <dt className="label-caps">{label}</dt>
             <dd className="font-mono text-[18px] font-semibold">{release.version}</dd>
           </div>
           <div>
@@ -131,7 +131,7 @@ function DownloadButton({ pkg, href, primary }: { pkg: PublicPackage; href: stri
 }
 
 /** Platform cards: every platform × arch × package type with sizes and arch guidance (P2). */
-export function PlatformDownloads({ slug, packages, useLatestResolver = true, requirements, idPrefix = 'platforms' }: { slug: string; packages: PublicPackage[]; useLatestResolver?: boolean; requirements?: Record<string, string[]>; idPrefix?: string }) {
+export function PlatformDownloads({ slug, packages, useLatestResolver = true, requirements, idPrefix = 'platforms', channel = 'STABLE' }: { slug: string; packages: PublicPackage[]; useLatestResolver?: boolean; requirements?: Record<string, string[]>; idPrefix?: string; channel?: string }) {
   const groups = groupByPlatform(packages);
   if (!groups.length) return <p className="text-[13px] text-subtle">No downloads are available for this version.</p>;
   return (
@@ -149,7 +149,7 @@ export function PlatformDownloads({ slug, packages, useLatestResolver = true, re
             <ul className="flex flex-col gap-2">
               {g.packages.map((p, i) => (
                 <li key={p.id}>
-                  <DownloadButton pkg={p} primary={i === 0 || (g.platform === 'macos' && p.recommended && g.packages[i - 1]?.architecture !== p.architecture)} href={useLatestResolver ? latestResolverUrl(slug, p) : p.download_url} />
+                  <DownloadButton pkg={p} primary={i === 0 || (g.platform === 'macos' && p.recommended && g.packages[i - 1]?.architecture !== p.architecture)} href={useLatestResolver ? latestResolverUrl(slug, p, channel) : p.download_url} />
                 </li>
               ))}
             </ul>

@@ -34,7 +34,7 @@ public static function bugtrace(bool $getShared = true): \Modules\Core\Libraries
     $redis->connect(env('redis.host', '127.0.0.1'));
 
     return new \Modules\Core\Libraries\BugTraceReporter([
-        'endpoint'        => 'https://updates.worksuitecloud.com',
+        'endpoint'        => 'https://download.worksuitecloud.com',
         'key'             => env('bugtrace.key'),            // pk_server_prod_…
         'release'         => \Config\App::VERSION_STRING,     // "3.4.0+34012" (matches the Update Center release)
         'environment'     => ENVIRONMENT,

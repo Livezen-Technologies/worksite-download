@@ -13,7 +13,7 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-10-12
+## [0.5.0] - 2026-10-12
 ### Added
 
 - **Core System Update Service, portal side (WS-CORE-SYSUPDATE-SRS-001 §10)** —
@@ -76,6 +76,135 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
   replaced by the DL-4 fleet view.
 - Server releases published before ring rollouts existed count as open in
   every ring, so their plans are not held.
+## [0.4.0] - 2026-10-09
+
+Deployed to download.worksuitecloud.com at 19:27 UTC on 2026-10-09 from
+`0ac23d4`, which merged main into `deploy/download-worksuitecloud`. Until then
+the two branches had drifted: main lacked the fixes production runs on (the
+two-factor switch, MariaDB index names, the publishing pipeline), so deploying
+main alone would have taken them off the live site. #9 (`ee8fa93`) brought main
+level with the deployed branch; main is the branch to deploy from again.
+
+The release combines two lines of work that each called themselves 0.4.0: the
+bug report form and the download.worksuitecloud.com rename from main, and the
+Sparkle appcasts and public Beta channel from the deployed branch. Both are listed
+below.
+
+### Added
+
+- **Public "Report a problem" form (FR-BT-REP-09)** — `/report-a-problem`
+  on the public site lets anyone report a bug, download/installation
+  problem or feature request for a WorkSuite application without signing
+  in (app, version, kind, severity, summary, details, steps, expected
+  result, OS, optional email with consent). Uses the existing
+  `POST /api/v1/bugtrace/reports/public` endpoint with honeypot,
+  idempotent `client_report_id` and an optional Cloudflare Turnstile
+  widget (`VITE_TURNSTILE_SITE_KEY`). On success it shows the `BR-`
+  reference and a private status link (`/report-a-problem/status`,
+  token-protected, `noindex`). Linked from the public footer and mobile
+  menu, included in prerendered routes, and served by the mock API.
+- **Report form: Web / Desktop / Mobile app** — reporters choose where the
+  problem happened (defaulted from the application kind and their device,
+  or `?platform=`); `POST /bugtrace/reports/public` accepts `platform` and
+  files the report under the matching Bug Trace project (WS-WEB, WS-DSK,
+  WS-MOB). Download-center app and release pages link to the form with the
+  application and version pre-filled.
+
+### Changed
+
+- **Public address is now `download.worksuitecloud.com`** (was
+  `updates.worksuitecloud.com`; staging `download-staging.`). It is used for
+  canonical URLs, the sitemap, the OpenAPI servers, the header and footer, and
+  the SDK defaults (`@worksuite/bugtrace-web`, and through it Electron and
+  React Native, plus the PHP `BugTraceReporter`). The old name keeps being
+  served unchanged by the same nginx site, because builds in the field call its
+  API and an API POST cannot follow a redirect. The CDN host
+  (`cdn-updates.`) and the `updates@` mail sender are unchanged. (#7)
+- **Report a problem in every WorkSuite app.** The clients now link to the
+  public form, each pre-filled with its app, version and platform:
+  web (account menu and the screen-error panel; with `VITE_BUGTRACE_KEY` the
+  SDK's in-app dialog and crash capture instead — worksuite#143), desktop
+  (Help › Report a Problem…, 0.2.216 — worksuite-desktop#316) and mobile
+  (Settings › About, 1.2.1 — worksuite-mobile#13).
+
+### Added
+
+- **Sparkle appcasts for macOS apps that update through Sparkle** — WorkSuite
+  Office first: `GET /api/v1/apps/{app}/channels/{channel}/appcast.xml?arch=arm64|x64`.
+  The feed offers what an anonymous macOS update check on that channel would get:
+  the newest published, fully rolled-out release with a READY package for that
+  architecture. It carries the build number as `sparkle:version`, the version,
+  the minimum macOS, the release notes, `sparkle:criticalUpdate` when the Update
+  API would require the update, and the public download URL as the enclosure.
+  Only public channels of public applications answer, because Sparkle sends no
+  credentials. See [docs/sparkle.md](docs/sparkle.md).
+- **Sparkle signatures through the CI attestation.** `scripts/publish-release.mjs`
+  reads `<archive>.edsig` (the `sparkle:edSignature` from Sparkle's `sign_update`)
+  and records it in the attestation as `files[].sparkle_ed_signature`. With
+  `UC_SPARKLE_PUBLIC_KEY` it checks the signature against the archive first, and
+  it refuses a macOS file that has none. The appcast offers a package only with
+  a signature from a verified attestation matching its SHA-256.
+- **WorkSuite Office in the seed catalog** (`lk.worksuite.office`, slug `office`)
+  for development and tests. In production it is created in `/admin`, as
+  described in docs/sparkle.md.
+
+- **Beta can be public.** A channel an administrator marks public is visible
+  to everyone: its downloads (`/download/<app>/beta/…`), release notes,
+  changelog and update checks. The application page offers the current Beta —
+  labelled "Latest beta", with a note that Beta installers are not code-signed
+  yet — when there is no Stable release, and as its own section when it is
+  newer than Stable. The "every installer is code-signed" line shows only for
+  Stable.
+- **A switch to turn two-factor authentication off**
+  (`updatecenter.mfaDisabled = true`, off by default). With it on, signing in
+  needs only the password, staff are not made to enrol, and publishing,
+  withdrawing, rollout changes and the other critical actions ask for no
+  step-up code. API clients are unaffected: a CI client still cannot publish in
+  production, and Stable still needs two different approvers. Turned on at the
+  owner's request (2026-10-03).
+- **`scripts/publish-release.mjs`**, the pipeline side of publishing. It
+  creates the release, writes the changelog, signs and posts the CI build
+  attestation (Ed25519 over the same canonical JSON the server verifies),
+  uploads every installer over tus, waits for scan and checks, and submits
+  for testing. QA, approval and publishing stay with people. No dependencies.
+- **`spark uc:create-ci-client "<name>" <token-file>`** — a CI API client with
+  the CI defaults plus `release.edit`, never `release.publish`; the one-time
+  token is written to a file (600), not printed.
+- **`updatecenter.allowUnsignedTestChannels`** (default off). On BETA, DEV and
+  INTERNAL, signature checking is skipped and recorded as "Not checked:
+  unsigned builds are allowed on the … channel"; the checklist shows it as
+  skipped. STABLE always requires valid signatures; the malware scan is never
+  relaxed. For the period before code signing is in place.
+- **`spark uc:create-admin <email> "<name>"`** — creates the first Super Admin
+  on the server, asking for the password at a hidden prompt. There was no way
+  to make one in production: the seeders create no users, `uc:demo` refuses in
+  production, and every other path to a staff account needs an existing admin.
+
+### Fixed
+
+- **A synced passkey worked once, then never again.** After each sign-in the
+  stored signature counter was set to "previous + 1" instead of the counter
+  the authenticator reported. iCloud Keychain and Google Password Manager
+  passkeys always report 0, so the second sign-in compared 1 ≥ 0 and was
+  refused as a cloned key ("Passkey verification failed"). The real counter
+  is stored now, failures are logged with their reason, and a test signs in
+  repeatedly with a software authenticator.
+- **Windows installers were rejected as the wrong architecture.** An NSIS
+  installer is a 32-bit x86 program whatever it installs, so every x64/arm64
+  setup.exe failed the metadata step ("Binary architecture x86 does not match
+  x64 slot"). An x86 `.exe` is now accepted in x64 and arm64 slots as an
+  installer stub; a 64-bit PE for the other CPU is still refused.
+- **Migrations failed on MySQL/MariaDB.** The seven-column unique key on the
+  daily download analytics generated an index name longer than the 64-character
+  limit, so `migrate --all` stopped at `CreateDistributionTables`. SQLite, where
+  the tests run, takes any length. `SchemaHelper` now shortens a key name over
+  60 characters (prefix plus a hash) and leaves every other name unchanged.
+- **Every error page was a 500.** `MetricsExceptionHandler` extended
+  CodeIgniter's `ExceptionHandler`, which is `final` in 4.7, so drawing any 404
+  or error was a fatal error. It now wraps the default handler.
+
+Found deploying to download.worksuitecloud.com (native: nginx, PHP-FPM,
+MariaDB, Redis, Garage for S3 storage, Vault Transit for the response key).
 
 ## [0.3.0] - 2026-10-03
 
@@ -248,7 +377,8 @@ B1 Bug Trace core).
   never executed; storage credentials are resolved from the secret service
   by reference only; telemetry stores no IP addresses or user identities.
 
-[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.1.0...v0.2.0

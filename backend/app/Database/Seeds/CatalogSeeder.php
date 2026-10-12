@@ -51,6 +51,8 @@ class CatalogSeeder extends Seeder
         ];
         $apps = [
             ['WorkSuite Desktop', 'desktop', 'lk.worksuite.desktop', 'DESKTOP', 'The WorkSuite desktop app for Windows, macOS and Linux — Mail, Chat, Meet, Files and your business apps in one window, with offline support.', $desktopPlatforms, 1],
+            // Updates on macOS through Sparkle, from GET /api/v1/apps/office/channels/{channel}/appcast.xml (SparkleAppcastService).
+            ['WorkSuite Office', 'office', 'lk.worksuite.office', 'DESKTOP', 'Documents, spreadsheets and presentations on your computer, with your WorkSuite Drive files on its home screen.', [['macos', 'arm64', ['dmg', 'zip'], 1, 'dmg', '11.0'], ['macos', 'x64', ['dmg', 'zip'], 0, 'dmg', null], ['windows', 'x64', ['exe', 'zip'], 0, 'exe', null], ['linux', 'x64', ['deb', 'rpm'], 0, 'deb', null]], 7],
             ['WorkSuite Installer', 'installer', 'lk.worksuite.installer', 'DESKTOP', 'Guided installer for self-hosted WorkSuite servers.', [['linux', 'x64', ['appimage', 'deb', 'rpm'], 1, 'deb', null], ['windows', 'x64', ['exe'], 0, 'exe', null]], 2],
             ['WorkSuite Quick Support', 'quick-support', 'lk.worksuite.quicksupport', 'DESKTOP', 'Let Livezen support connect to your computer securely for a single session.', [['windows', 'x64', ['exe'], 1, 'exe', null], ['macos', 'arm64', ['dmg'], 1, 'dmg', null], ['macos', 'x64', ['dmg'], 0, 'dmg', null]], 3],
             ['WorkSuite Sync Agent', 'sync-agent', 'lk.worksuite.syncagent', 'DESKTOP', 'Background file sync for WorkSuite Drive.', [['windows', 'x64', ['msi'], 1, 'msi', null], ['macos', 'arm64', ['pkg'], 1, 'pkg', null], ['linux', 'x64', ['deb', 'rpm'], 1, 'deb', null]], 4],

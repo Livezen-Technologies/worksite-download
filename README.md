@@ -1,6 +1,6 @@
 # WorkSuite Update Center
 
-**updates.worksuitecloud.com** — the separate distribution application for WorkSuite
+**download.worksuitecloud.com** — the separate distribution application for WorkSuite
 software (WS-UPDATE-CENTER-SRS-001 v1.2): release management, package distribution,
 signed manifests, public download pages, the Desktop Update API, WorkSuite Server
 edition updates (§17) and Bug Trace crash / bug reporting (§18).

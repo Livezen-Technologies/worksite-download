@@ -95,7 +95,7 @@ export interface InitOptions {
   release: string;
   /** Tenant Policy Token (string or getter). Carries the `bugtrace` policy claim. */
   tpt?: string | null | (() => string | null | undefined);
-  /** Update Center base URL. Default https://updates.worksuitecloud.com */
+  /** Update Center base URL. Default https://download.worksuitecloud.com */
   endpoint?: string;
   environment?: string;
   app?: string;

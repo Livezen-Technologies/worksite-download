@@ -43,4 +43,45 @@ export const publicApi = {
   subscribe: (email: string, app: string, channel: ChannelCode) => api.post<{ status: string }>('/subscriptions', { email, app, channel }),
   confirmSubscription: (token: string) => api.get<{ status: string }>('/subscriptions/confirm', { token }),
   unsubscribe: (token: string) => api.get<{ status: string }>('/subscriptions/unsubscribe', { token }),
+  submitBugReport: (body: PublicBugReport) => api.post<BugReportReceipt>('/bugtrace/reports/public', body),
+  bugReportStatus: (reference: string, token: string) => api.get<BugReportStatus>(`/bugtrace/reports/${encodeURIComponent(reference)}/status`, { token }),
 };
+
+export type BugSeverity = 'MINOR' | 'ANNOYING' | 'BLOCKS_WORK' | 'DATA_WRONG';
+export type BugCategory = 'BUG' | 'PERFORMANCE' | 'DATA' | 'UI' | 'FEATURE_REQUEST';
+
+/** Anonymous problem report from the website (FR-BT-REP-09). */
+export interface PublicBugReport {
+  app: string;
+  /** Where the problem happened: picks the Bug Trace project (web, desktop, mobile). */
+  platform?: 'web' | 'desktop' | 'mobile';
+  release?: string;
+  title: string;
+  description?: string;
+  steps?: string[];
+  expected?: string;
+  severity: BugSeverity;
+  category: BugCategory;
+  context?: Record<string, unknown>;
+  contact?: { consent: boolean; email?: string };
+  client_report_id?: string;
+  captcha_token: string;
+  /** Honeypot — must stay empty. */
+  website?: string;
+}
+
+export interface BugReportReceipt {
+  reference: string;
+  status_url: string | null;
+  status_token: string | null;
+}
+
+export interface BugReportStatus {
+  reference: string;
+  title: string;
+  status: 'received' | 'linked' | 'fixed' | 'feature_request' | 'need_info' | 'closed';
+  fixed_in: string | null;
+  created_at: string;
+  updated_at: string;
+  updates: { status: string; message: string; created_at: string }[];
+}

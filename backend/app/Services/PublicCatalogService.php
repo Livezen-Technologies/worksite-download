@@ -20,13 +20,18 @@ class PublicCatalogService
     /** Channels this viewer may see (§4.2 access rules). */
     public function visibleChannelCodes(): array
     {
-        $codes = ['STABLE'];
+        // Stable, plus every channel an administrator has made public (Beta,
+        // when the owner opens it to everyone).
+        $codes = array_values(array_unique(array_merge(['STABLE'], array_column(
+            db_connect()->table('release_channels')->select('code')->where('application_id', null)->where('is_public', 1)->get()->getResultArray(),
+            'code'
+        ))));
         $v     = $this->viewer;
         if ($v !== null && $v->user !== null) {
             if ($v->isStaff()) {
                 return ['STABLE', 'BETA', 'DEV', 'INTERNAL', 'CUSTOM'];
             }
-            if ($v->user['beta_opt_in'] || in_array('beta_tester', $v->roles, true)) {
+            if (($v->user['beta_opt_in'] || in_array('beta_tester', $v->roles, true)) && ! in_array('BETA', $codes, true)) {
                 $codes[] = 'BETA';
             }
         }
@@ -98,9 +103,20 @@ class PublicCatalogService
         $channels = array_map(static fn ($c) => ['code' => $c['code'], 'name' => $c['name'], 'description' => $c['description'], 'is_public' => (bool) $c['is_public']],
             db_connect()->table('release_channels c')->select('c.*')->join('application_channels ac', 'ac.channel_id = c.id')->where('ac.application_id', $app['id'])->where('ac.enabled', 1)->orderBy('c.sort_order')->get()->getResultArray());
 
+        // The current Beta release, for viewers who may see Beta (everyone once
+        // Beta is public): the page offers it beside — or instead of — Stable.
+        $beta = null;
+        if (in_array('BETA', $this->visibleChannelCodes(), true)) {
+            $b = (new ManifestService())->currentRelease((int) $app['id'], (int) Catalog::channel('BETA')['id']);
+            if ($b !== null && $b['visibility'] === 'PUBLIC' && ($cur === null || Semver::compare($b['version'], $cur['version']) > 0)) {
+                $beta = $this->releaseDetail($app, $b);
+            }
+        }
+
         return $this->appSummary($app) + [
             'page'     => $this->downloadPage($app),
             'latest'   => $cur && $cur['visibility'] === 'PUBLIC' ? $this->releaseDetail($app, $cur) : null,
+            'beta'     => $beta,
             'channels' => $channels,
         ];
     }

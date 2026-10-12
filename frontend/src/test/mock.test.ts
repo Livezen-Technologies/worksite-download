@@ -35,6 +35,14 @@ describe('mock API (contract shapes + critical-action rules)', () => {
     expect(() => call('POST', '/admin/releases/rel_desktop_270/withdraw', { reason: 'x', confirm_version: '2.7' }, { 'x-mfa-token': '123456' })).toThrow(/Type the version/);
   });
 
+  it('accepts anonymous public bug reports without CSRF and serves their status by token', () => {
+    const r = handleMock({ method: 'POST', path: '/bugtrace/reports/public', query: new URLSearchParams(), headers: {}, body: { app: 'desktop', title: 'Installer fails', captcha_token: 'x' } });
+    expect(r.status).toBe(201);
+    const { reference, status_token } = r.body as any;
+    expect(call('GET', `/bugtrace/reports/${reference}/status?token=${status_token}`).status).toBe('received');
+    expect(() => call('GET', `/bugtrace/reports/${reference}/status?token=nope`)).toThrow(/not found/);
+  });
+
   it('rejects mutations without the CSRF header', () => {
     expect(() => handleMock({ method: 'POST', path: '/admin/releases/rel_desktop_271/approve', query: new URLSearchParams(), headers: {}, body: {} })).toThrow(/session token/);
   });

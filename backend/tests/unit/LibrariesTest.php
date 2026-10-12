@@ -62,6 +62,12 @@ final class LibrariesTest extends CIUnitTestCase
         $this->assertFalse(BinaryInspector::matches(BinaryInspector::inspect(Fixtures::pe('arm64')), 'exe', 'x64')['ok']);
         $this->assertFalse(BinaryInspector::matches(BinaryInspector::inspect(Fixtures::appImage()), 'exe', 'x64')['ok']);
         $this->assertTrue(BinaryInspector::matches(BinaryInspector::inspect(Fixtures::pe('x64')), 'exe', 'x64')['ok']);
+        // An NSIS installer is a 32-bit x86 stub whatever it installs: accepted as an exe in x64 and arm64 slots…
+        $this->assertSame(['x86'], BinaryInspector::inspect(Fixtures::pe('x86'))['architectures']);
+        $this->assertTrue(BinaryInspector::matches(BinaryInspector::inspect(Fixtures::pe('x86')), 'exe', 'x64')['ok']);
+        $this->assertTrue(BinaryInspector::matches(BinaryInspector::inspect(Fixtures::pe('x86')), 'exe', 'arm64')['ok']);
+        // …but not as an msi, and a 64-bit PE for the other CPU is still refused.
+        $this->assertFalse(BinaryInspector::matches(BinaryInspector::inspect(Fixtures::pe('x64')), 'exe', 'arm64')['ok']);
     }
 
     private const MODULES = ['FREE' => ['core', 'mail', 'chat'], 'BUSINESS' => ['crm', 'hr'], 'ENTERPRISE' => ['payroll', 'fleet']];

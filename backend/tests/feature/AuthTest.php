@@ -54,6 +54,48 @@ final class AuthTest extends UcTestCase
         $this->get('api/v1/auth/me')->assertStatus(200);
     }
 
+    public function testMfaSwitchedOffAsksNoStepUpOfPeopleButStillOfCiInProduction(): void
+    {
+        $cfg = config('UpdateCenter');
+        $cfg->environmentName = 'PRODUCTION';
+        $cfg->mfaDisabled     = true;
+        try {
+            $person       = new \App\Services\AuthContext();
+            $person->user = $this->makeUser(['release_manager']);
+            $this->assertFalse((new \App\Services\ReleaseService($person))->stepUpNeeded(), 'a person publishes without a code');
+
+            $ci            = new \App\Services\AuthContext();
+            $ci->apiClient = ['id' => 1];
+            $this->assertTrue((new \App\Services\ReleaseService($ci))->stepUpNeeded(), 'a CI client still cannot publish');
+
+            $cfg->mfaDisabled = false;
+            $this->assertTrue((new \App\Services\ReleaseService($person))->stepUpNeeded(), 'switch off: production asks again');
+        } finally {
+            $cfg->environmentName = 'DEV';
+            $cfg->mfaDisabled     = false;
+        }
+    }
+
+    public function testMfaSwitchedOffSignsInWithThePasswordAlone(): void
+    {
+        $u = $this->makeUser(['release_manager'], 'off@livezen.lk');
+        db_connect()->table('users')->where('id', $u['id'])->update(['mfa_enabled' => 1, 'mfa_totp_secret' => SecretStore::seal(Totp::generateSecret())]);
+        $cfg              = config('UpdateCenter');
+        $cfg->mfaDisabled = true;
+
+        try {
+            $res = $this->withBodyFormat('json')->post('api/v1/auth/login', ['email' => 'off@livezen.lk', 'password' => 'correct horse battery']);
+            $res->assertStatus(200);
+            $this->assertFalse($this->json($res)['mfa_required']);
+            $session = db_connect()->table('user_sessions')->where('user_id', $u['id'])->get()->getRowArray();
+            $this->assertSame('0', (string) $session['mfa_pending']);
+            $this->setCookie('uc_session', $res->response()->getCookie('uc_session')->getValue());
+            $this->get('api/v1/auth/me')->assertStatus(200);
+        } finally {
+            $cfg->mfaDisabled = false;
+        }
+    }
+
     public function testCsrfRequiredForCookieSessions(): void
     {
         $u = $this->makeUser(['super_admin']);

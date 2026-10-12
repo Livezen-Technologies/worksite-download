@@ -93,11 +93,27 @@ trait SchemaHelper
             $this->forge->addPrimaryKey('id');
         }
         foreach ($keys as $k) {
-            $this->forge->addKey($k);
+            $this->forge->addKey($k, false, false, $this->keyName($k));
         }
         foreach ($unique as $u) {
-            $this->forge->addUniqueKey($u);
+            $this->forge->addUniqueKey($u, $this->keyName($u));
         }
         $this->forge->createTable($name, true);
+    }
+
+    /**
+     * An index name MySQL and MariaDB accept. Their limit is 64 characters and
+     * the name CodeIgniter builds from the column names can run past it (the
+     * seven-column analytics key does), which fails `migrate` on the real
+     * database while SQLite, where the tests run, takes any length. Short names
+     * are left exactly as CodeIgniter would make them.
+     *
+     * @param list<string>|string $columns
+     */
+    private function keyName(array|string $columns): string
+    {
+        $name = is_array($columns) ? implode('_', $columns) : $columns;
+
+        return strlen($name) <= 60 ? '' : substr($name, 0, 51) . '_' . substr(md5($name), 0, 8);
     }
 }

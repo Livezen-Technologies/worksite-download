@@ -55,7 +55,7 @@ class AuthFilter implements FilterInterface
         if (in_array('staff', $args, true) && $ctx->user !== null && ! $ctx->isStaff()) {
             return self::deny('FORBIDDEN', 'Staff account required', 403);
         }
-        if (in_array('staff', $args, true) && $ctx->user !== null && config('UpdateCenter')->requireStaffMfa && empty($ctx->user['mfa_enabled'])) {
+        if (in_array('staff', $args, true) && $ctx->user !== null && config('UpdateCenter')->requireStaffMfa && ! config('UpdateCenter')->mfaDisabled && empty($ctx->user['mfa_enabled'])) {
             return self::deny('MFA_ENROLLMENT_REQUIRED', 'Enable two-factor authentication to continue', 403);
         }
 

@@ -113,7 +113,7 @@ export function AdminLayout() {
               <Menu className="size-4" aria-hidden />
             </button>
             <EnvBadge env={environment} />
-            <span className="hidden text-[12px] text-subtle sm:inline">updates.worksuitecloud.com</span>
+            <span className="hidden text-[12px] text-subtle sm:inline">download.worksuitecloud.com</span>
           </div>
           <div className="flex items-center gap-2">
             <NotificationBell />

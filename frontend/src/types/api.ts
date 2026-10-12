@@ -180,6 +180,8 @@ export interface SiteInfo {
 export type AppDetail = AppSummary & {
   page: DownloadPage;
   latest: PublicReleaseDetail | null;
+  /** The current Beta release when this viewer may see Beta and it is newer than Stable. */
+  beta?: PublicReleaseDetail | null;
   channels: PublicChannel[];
 };
 

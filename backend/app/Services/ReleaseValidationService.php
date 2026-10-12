@@ -84,8 +84,12 @@ class ReleaseValidationService
         $scanBad      = array_filter($ready, static fn ($p) => $p['scan_status'] !== 'CLEAN' && ! (! $scanRequired && $p['scan_status'] === 'SKIPPED'));
         $add('scan', 'Malware scan clean', $ready === [] ? 'pending' : ($scanBad === [] ? ($scanRequired ? 'pass' : 'skipped') : 'fail'), $scanRequired, $scanRequired ? null : 'No scanner configured (development)');
 
-        $sigBad = array_filter($ready, static fn ($p) => ! in_array($p['signature_status'], ['VALID', 'NOT_REQUIRED'], true) && ! (! $prod && $p['signature_status'] === 'SKIPPED'));
-        $add('signatures', 'Package code signatures valid (Authenticode, Developer ID + notarization, GPG)', $ready === [] ? 'pending' : ($sigBad === [] ? 'pass' : 'fail'), true, $sigBad === [] ? null : count($sigBad) . ' package(s) unsigned or invalid');
+        // Unsigned is accepted outside production, and on non-STABLE channels when allowed.
+        $unsignedOk = ! $prod || ($cfg->allowUnsignedTestChannels && ($channel['code'] ?? '') !== 'STABLE');
+        $skipped    = array_filter($ready, static fn ($p) => $p['signature_status'] === 'SKIPPED');
+        $sigBad     = array_filter($ready, static fn ($p) => ! in_array($p['signature_status'], ['VALID', 'NOT_REQUIRED'], true) && ! ($unsignedOk && $p['signature_status'] === 'SKIPPED'));
+        $add('signatures', 'Package code signatures valid (Authenticode, Developer ID + notarization, GPG)', $ready === [] ? 'pending' : ($sigBad !== [] ? 'fail' : ($skipped !== [] ? 'skipped' : 'pass')), true,
+            $sigBad !== [] ? count($sigBad) . ' package(s) unsigned or invalid' : ($skipped !== [] ? count($skipped) . ' package(s) unsigned — allowed on this channel' : null));
 
         $attBad = array_filter($ready, static fn ($p) => $p['attestation_match'] !== 'MATCH');
         $attMis = array_filter($ready, static fn ($p) => $p['attestation_match'] === 'MISMATCH');

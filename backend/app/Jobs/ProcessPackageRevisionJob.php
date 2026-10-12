@@ -132,7 +132,10 @@ class ProcessPackageRevisionJob implements JobInterface
 
             // 4. Platform signature.
             $this->step('signature', 'running');
-            $sig = (new SignatureVerifier($cfg->signatureVerifier, $cfg->expectedPublisher, $cfg->gpgKeyring))->verify($tmp, $package['platform'], $package['package_type']);
+            $channelCode = (string) (Catalog::channelById((int) $release['channel_id'])['code'] ?? '');
+            $sig         = $cfg->allowUnsignedTestChannels && $channelCode !== 'STABLE'
+                ? ['status' => 'SKIPPED', 'kind' => 'none', 'detail' => "Not checked: unsigned builds are allowed on the {$channelCode} channel", 'signer' => null]
+                : (new SignatureVerifier($cfg->signatureVerifier, $cfg->expectedPublisher, $cfg->gpgKeyring))->verify($tmp, $package['platform'], $package['package_type']);
             $this->save(['signature_status' => $sig['status'], 'signature_detail' => json_encode($sig)]);
             if ($sig['status'] === 'INVALID') {
                 $this->reject('signature', 'SIGNATURE_INVALID', $sig['detail'], $release, $package);
