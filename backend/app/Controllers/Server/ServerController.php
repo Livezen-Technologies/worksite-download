@@ -17,6 +17,10 @@ class ServerController extends BaseApiController
 {
     private function installation(): array
     {
+        if (\App\Services\RequestSignature::applies($this->request->getHeaderLine('Authorization'))) {
+            return \App\Services\RequestSignature::verify($this->request);
+        }
+
         return (new ServerUpdateService())->installationFromLicense($this->request->getHeaderLine('Authorization') ?: null);
     }
 
@@ -58,6 +62,9 @@ class ServerController extends BaseApiController
     private function keyInstallation(): array
     {
         $h = $this->request->getHeaderLine('Authorization');
+        if (\App\Services\RequestSignature::applies($h)) {
+            return \App\Services\RequestSignature::verify($this->request);
+        }
         if (! str_starts_with($h, 'Installation ')) {
             throw new ApiException('INSTALLATION_KEY_REQUIRED', 'Installation key required (Authorization: Installation <key>) — register the installation first', 401);
         }
@@ -115,5 +122,11 @@ class ServerController extends BaseApiController
     public function inspectLicense()
     {
         return $this->ok((new \App\Services\LicenseService())->inspect($this->body()));
+    }
+
+    /** POST /server/licenses/deactivate — this server gives its licence slot back (decommission, move). */
+    public function deactivateLicense()
+    {
+        return $this->ok((new \App\Services\LicenseService())->deactivateSelf($this->keyInstallation(), $this->body()));
     }
 }

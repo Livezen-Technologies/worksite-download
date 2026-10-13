@@ -221,9 +221,11 @@ final class LicenseService
 
         // Register or link the installation (the same row the update API uses).
         $instKey = ServerAutoUpdateService::KEY_PREFIX . Base64Url::encode(random_bytes(32));
+        [$reqSecret, $reqRef] = RequestSignature::issue();
         $inst    = $db->table('server_installations')->where('installation_id', $installationId)->get()->getRowArray();
         $instSet = [
             'edition' => $lic['edition'], 'license_id' => $lic['id'], 'key_hash' => hash('sha256', $instKey), 'key_issued_at' => $now, 'updated_at' => $now,
+            'request_secret_ref' => $reqRef,
         ];
         foreach (['name' => 191, 'version' => 64] as $k => $len) {
             if (isset($in[$k]) && is_string($in[$k]) && trim($in[$k]) !== '') {
@@ -241,14 +243,21 @@ final class LicenseService
         } else {
             $db->table('server_installations')->where('id', $inst['id'])->update($instSet + ($inst['registered_at'] ? [] : ['registered_at' => $now]));
         }
-        $created = $slot === null;
+        $created    = $slot === null;
+        $components = self::components($in);
+        // Activating again with the licence key is the controlled transfer: the server's new fingerprint is registered.
+        $fp = ['fingerprint_components' => $components !== [] ? json_encode($components) : null, 'fingerprint_confidence' => $components !== [] ? 100 : null, 'transfer_state' => null];
         if ($created) {
             $db->table('license_activations')->insert([
                 'license_id' => $lic['id'], 'installation_id' => $installationId, 'fingerprint' => $fingerprint, 'hostname' => $hostname, 'server_url' => $serverUrl,
                 'activated_at' => $now, 'last_validated_at' => $now, 'created_at' => $now, 'updated_at' => $now,
-            ]);
+            ] + $fp);
         } else {
-            $db->table('license_activations')->where('id', $slot['id'])->update(['fingerprint' => $fingerprint ?: $slot['fingerprint'], 'hostname' => $hostname ?: $slot['hostname'], 'server_url' => $serverUrl ?: $slot['server_url'], 'last_validated_at' => $now, 'updated_at' => $now]);
+            if ($slot['transfer_state'] ?? null) {
+                service('audit')->record('license.transferred', 'license', $lic['public_id'], ['fingerprint_confidence' => $slot['fingerprint_confidence'] ?? null], ['installation_id' => $installationId, 'hostname' => $hostname]);
+            }
+            $db->table('license_activations')->where('id', $slot['id'])->update(['fingerprint' => $fingerprint ?: $slot['fingerprint'], 'hostname' => $hostname ?: $slot['hostname'], 'server_url' => $serverUrl ?: $slot['server_url'], 'last_validated_at' => $now, 'updated_at' => $now]
+                + ($components !== [] ? $fp : ['transfer_state' => null]));
         }
         $act = $db->table('license_activations')->where('license_id', $lic['id'])->where('installation_id', $installationId)->where('deactivated_at', null)->get()->getRowArray();
         service('audit')->record($created ? 'license.activated' : 'license.reactivated', 'license', $lic['public_id'], null,
@@ -258,6 +267,7 @@ final class LicenseService
             'type'             => 'license_activation',
             'installation_id'  => $installationId,
             'installation_key' => $instKey,
+            'request_secret'   => $reqSecret,
             'key_fingerprint'  => ServerAutoUpdateService::fingerprint($instKey),
             'entitlement'      => $this->entitlement($lic, $act),
         ], self::ENTITLEMENT_TTL), $created];
@@ -293,7 +303,24 @@ final class LicenseService
         }
         $act = $db->table('license_activations')->where('license_id', $lic['id'])->where('installation_id', $inst['installation_id'])->orderBy('id', 'DESC')->get()->getRowArray();
         if ($act !== null && $act['deactivated_at'] === null) {
-            $db->table('license_activations')->where('id', $act['id'])->update(['last_validated_at' => Catalog::now(), 'updated_at' => Catalog::now()]);
+            $set  = ['last_validated_at' => Catalog::now(), 'updated_at' => Catalog::now()];
+            $mine = self::components($in);
+            $reg  = json_decode((string) ($act['fingerprint_components'] ?? ''), true);
+            if ($mine !== [] && is_array($reg) && $reg !== []) {
+                $score                         = self::confidence($reg, $mine);
+                $set['fingerprint_confidence'] = $score;
+                if ($score < 60 && ($act['transfer_state'] ?? null) === null) {
+                    $set['transfer_state'] = 'TRANSFER_REQUIRED';
+                    service('audit')->record('license.transfer_required', 'license', $lic['public_id'], null, ['installation_id' => $inst['installation_id'], 'confidence' => $score], null,
+                        ['type' => 'INSTALLATION', 'id' => $inst['installation_id'], 'label' => $inst['name'] ?: $inst['installation_id']]);
+                } elseif ($score >= 80) {
+                    // Small drift (a new disk, a cloud move with the same machine id) is folded in.
+                    $set['fingerprint_components'] = json_encode($mine);
+                    $set['transfer_state']         = null;
+                }
+            }
+            $db->table('license_activations')->where('id', $act['id'])->update($set);
+            $act = $db->table('license_activations')->where('id', $act['id'])->get()->getRowArray();
         }
         $set = ['last_check_at' => Catalog::now()];
         foreach (['version' => 64] as $k => $len) {
@@ -325,6 +352,56 @@ final class LicenseService
         }
     }
 
+    /** POST /server/licenses/deactivate — the server frees its own slot (decommission, or before a move). */
+    public function deactivateSelf(array $inst, array $in): array
+    {
+        $db  = db_connect();
+        $act = $inst['license_id'] ? $db->table('license_activations')->where('license_id', $inst['license_id'])->where('installation_id', $inst['installation_id'])->where('deactivated_at', null)->get()->getRowArray() : null;
+        if ($act === null) {
+            throw new ApiException('NOT_ACTIVATED', 'This server has no active licence activation.', 409);
+        }
+        $reason = trim((string) ($in['reason'] ?? '')) ?: 'Deactivated from the server';
+        $db->table('license_activations')->where('id', $act['id'])->update(['deactivated_at' => Catalog::now(), 'deactivate_reason' => substr($reason, 0, 255), 'updated_at' => Catalog::now()]);
+        $db->table('server_installations')->where('id', $inst['id'])->update(['request_secret_ref' => null, 'key_hash' => hash('sha256', random_bytes(32)), 'updated_at' => Catalog::now()]);
+        $lic = $db->table('licenses')->where('id', $inst['license_id'])->get()->getRowArray();
+        service('audit')->record('license.deactivated', 'license', $lic['public_id'] ?? null, null, ['installation_id' => $inst['installation_id']], $reason,
+            ['type' => 'INSTALLATION', 'id' => $inst['installation_id'], 'label' => $inst['name'] ?: $inst['installation_id']]);
+
+        return ServerAutoUpdateService::sign(['type' => 'license_deactivation', 'installation_id' => $inst['installation_id'], 'deactivated' => true], 300);
+    }
+
+    /** Weights of each fingerprint component (IMPL-LIC-01 §3.5). */
+    public const FP_WEIGHTS = ['uuid' => 35, 'secret' => 25, 'machine' => 15, 'dmi' => 10, 'cloud' => 10, 'disk' => 5];
+
+    /** The per-component hashes a server sent (64 hex each); unknown components are ignored. @return array<string,string> */
+    public static function components(array $in): array
+    {
+        $out = [];
+        foreach ((array) ($in['fingerprint_components'] ?? []) as $k => $v) {
+            if (isset(self::FP_WEIGHTS[$k]) && is_string($v) && preg_match('/^[a-f0-9]{64}$/', $v)) {
+                $out[$k] = $v;
+            }
+        }
+
+        return $out;
+    }
+
+    /** 0–100: the weight of matching components over the weight of components both sides have. */
+    public static function confidence(array $registered, array $now): int
+    {
+        $both = $match = 0;
+        foreach (self::FP_WEIGHTS as $k => $w) {
+            if (isset($registered[$k], $now[$k])) {
+                $both += $w;
+                if (hash_equals((string) $registered[$k], (string) $now[$k])) {
+                    $match += $w;
+                }
+            }
+        }
+
+        return $both === 0 ? 100 : (int) round(100 * $match / $both);
+    }
+
     // ---- Shared ------------------------------------------------------------------
 
     /** ACTIVE | EXPIRED | SUSPENDED | REVOKED | NOT_STARTED, at this moment. */
@@ -335,6 +412,9 @@ final class LicenseService
         }
         if ($activation !== null && $activation['deactivated_at'] !== null) {
             return 'DEACTIVATED';
+        }
+        if ($activation !== null && ($activation['transfer_state'] ?? null) === 'TRANSFER_REQUIRED') {
+            return 'TRANSFER_REQUIRED';
         }
         $now = time();
         if ($lic['starts_at'] && strtotime($lic['starts_at'] . ' UTC') > $now) {
@@ -356,6 +436,7 @@ final class LicenseService
             'REVOKED'     => 'This WorkSuite licence key has been revoked. Activate a new key.',
             'DEACTIVATED' => 'This server was deactivated from its licence. Activate the licence again.',
             'NOT_STARTED' => 'This licence is not valid yet.',
+            'TRANSFER_REQUIRED' => 'This server no longer looks like the one the licence was activated on. Activate the licence again here to transfer it, or deactivate the old server in the WorkSuite Download Center.',
             default       => 'This server has no WorkSuite licence. Activate a licence key.',
         };
     }
@@ -397,6 +478,7 @@ final class LicenseService
             'hostname'           => $activation['hostname'] ?? null,
             'fingerprint'        => (bool) $lic['server_bound'] ? ($activation['fingerprint'] ?? null) : null,
             'server_bound'       => (bool) $lic['server_bound'],
+            'fingerprint_confidence' => isset($activation['fingerprint_confidence']) ? (int) $activation['fingerprint_confidence'] : null,
             'activated_at'       => Catalog::iso($activation['activated_at'] ?? null),
             'license_starts_at'  => Catalog::iso($lic['starts_at']),
             'license_expires_at' => Catalog::iso($lic['expires_at']),

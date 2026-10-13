@@ -16,6 +16,7 @@ $routes->group('api/v1/server', ['namespace' => 'App\Controllers\Server', 'filte
     $routes->post('licenses/activate', 'ServerController::activateLicense');
     $routes->post('licenses/validate', 'ServerController::validateLicense');
     $routes->post('licenses/inspect', 'ServerController::inspectLicense');
+    $routes->post('licenses/deactivate', 'ServerController::deactivateLicense');
     $routes->get('auto-update/plan', 'ServerController::plan');
     $routes->get('auto-update/policy', 'ServerController::getPolicy');
     $routes->put('auto-update/policy', 'ServerController::putPolicy');
