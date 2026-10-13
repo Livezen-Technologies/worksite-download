@@ -58,6 +58,8 @@ final class Rbac
         'signing_key.rotate'        => ['Rotate signing keys', [self::SA]],
         'audit.view'                => ['View audit log', [self::SA, self::RM, self::SUP]],
         'campaign.manage'           => ['Server notification campaigns', [self::SA, self::RM]],
+        // The Customer Portal's service client only (worksuitecloud.com); no staff role holds it.
+        'license.service'           => ['Customer Portal: a customer\'s licences', []],
         'license.view'              => ['View WorkSuite Server licences', [self::SA, self::RM, self::SUP]],
         'license.manage'            => ['Generate, renew, suspend and revoke licences', [self::SA]],
         'installations.view'        => ['View server installations', [self::SA, self::RM, self::DEV, self::SUP]],

@@ -140,8 +140,8 @@ class AdministrationController extends BaseApiController
     {
         $b    = $this->body();
         $kind = strtoupper((string) ($b['kind'] ?? 'CI'));
-        if (! in_array($kind, ['CI', 'TENANT', 'INTEGRATION'], true)) {
-            throw ApiException::validation(['kind' => 'CI, TENANT or INTEGRATION']);
+        if (! in_array($kind, ['CI', 'TENANT', 'INTEGRATION', 'SERVICE'], true)) {
+            throw ApiException::validation(['kind' => 'CI, TENANT, INTEGRATION or SERVICE']);
         }
         $perms    = array_values((array) ($b['permissions'] ?? ($kind === 'CI' ? Rbac::CI_DEFAULT : ['release.view'])));
         $tenantId = null;

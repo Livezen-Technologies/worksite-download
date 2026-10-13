@@ -86,6 +86,19 @@ switch (#11).
   (`license.staging.max`, `license.dr.max`; placeholders 0/1/2 and 0/0/1). The
   installer takes `--installation-type` and `--cluster`.
 
+- **Portal › My licences (P3).** A customer signed in to the Download Center
+  portal, with a verified email, sees the licences whose contact email is
+  theirs (anyone else's answers 404): status, edition, expiry, update
+  eligibility, servers, entitlements and history. They can show the key
+  again (keys issued from now on are kept sealed for this), replace it (the
+  old key activates nothing more), deactivate a server — including a lost one,
+  whose credentials end at once — run offline activation without typing the
+  key, compare editions, and start one 30-day Business or Enterprise trial per
+  account. Renewal and edition changes go through sales; the portal has no
+  billing yet. Licences gain `customer_ref`, `key_sealed` and `is_trial`; API
+  clients may be of kind SERVICE, with the new `license.service` permission,
+  for the worksuitecloud.com portal backend when it exists.
+
 ### Changed
 
 - `GET /api/v1/server/update` and `POST /api/v1/server/downloads/grant` refuse
