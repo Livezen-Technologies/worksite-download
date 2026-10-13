@@ -13,8 +13,8 @@ frontend/         React 19 + TypeScript + Tailwind v4 — public site, user port
 sdks/             Bug Trace SDKs: web, Electron main process, React Native, tenant PHP reporter
 docker/ nginx/    Container images, compose stack, nginx + CDN edge worker
 openapi/          OpenAPI 3.1 description (served at /api-docs)
-docs/             API contract, versioning
-scripts/          version.php (version + changelog management)
+docs/             API contract, versioning, Linux repositories
+scripts/          version.php (version + changelog management), publish-release.mjs, publish-linux-repos.sh
 ```
 
 ## Quick start (local, no Docker)

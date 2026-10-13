@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# A stand-in for reprepro in scripts/tests (the real one is used in CI and docker/linux-repo.Dockerfile).
+# It keeps reprepro's `list` output format, writes dists/<suite>/Release and calls the SignWith hook like reprepro.
+set -euo pipefail
+base='' out=''
+while [[ ${1:-} == -* ]]; do
+  case $1 in
+    -b) base=$2; shift 2 ;;
+    --outdir) out=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+cmd=$1; shift
+db="$base/db"
+mkdir -p "$db"
+touch "$db/packages"
+echo "reprepro $cmd $*" >>"${FAKE_LOG:-/dev/null}"
+hook=$(sed -n 's/^SignWith: ! //p' "$base/conf/distributions" | head -n 1)
+grep -q "^Codename: ${1:-none}$" "$base/conf/distributions" || { echo "reprepro: no distribution ${1:-}" >&2; exit 249; }
+export_suite() {
+  local s=$1
+  mkdir -p "$out/dists/$s/main"
+  { echo "Origin: WorkSuite"; echo "Suite: $s"; echo "Codename: $s"; grep "^$s|" "$db/packages" || true; } >"$out/dists/$s/Release"
+  rm -f "$out/dists/$s/InRelease" "$out/dists/$s/Release.gpg"
+  "$hook" "$out/dists/$s/Release" "$out/dists/$s/InRelease" "$out/dists/$s/Release.gpg"
+}
+case $cmd in
+  list) grep "^$1|" "$db/packages" | { if [ -n "${2:-}" ]; then grep ": $2 " || true; else cat; fi; } ;;
+  includedeb)
+    s=$1 f=$2
+    v=$(dpkg-deb -f "$f" Version) a=$(dpkg-deb -f "$f" Architecture) p=$(dpkg-deb -f "$f" Package)
+    grep -v "^$s|main|$a: $p " "$db/packages" >"$db/packages.new" || true
+    echo "$s|main|$a: $p $v" >>"$db/packages.new"
+    mv "$db/packages.new" "$db/packages"
+    mkdir -p "$out/pool/main/w/$p"
+    cp "$f" "$out/pool/main/w/$p/${p}_${v}_${a}.deb"
+    export_suite "$s"
+    ;;
+  export) export_suite "$1" ;;
+  *) echo "fake reprepro: $cmd is not faked" >&2; exit 1 ;;
+esac
