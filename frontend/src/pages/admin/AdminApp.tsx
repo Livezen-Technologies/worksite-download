@@ -85,6 +85,7 @@ export default function AdminApp() {
           <Route path="server/installations" element={<Guard perm="installations.view"><P.Installations /></Guard>} />
           <Route path="server/licenses" element={<Guard perm="license.view"><P.Licenses /></Guard>} />
           <Route path="server/entitlements" element={<Guard perm="license.view"><P.Entitlements /></Guard>} />
+          <Route path="server/license-risk" element={<Guard perm="license.view"><P.LicenseRisk /></Guard>} />
           <Route path="server/fleet" element={<Guard perm={['fleet.manage', 'installations.view']}><P.ManagedFleet /></Guard>} />
           <Route path="bugtrace/issues" element={<Guard perm="bugtrace.view"><P.IssuesPage /></Guard>} />
           <Route path="bugtrace/issues/:id" element={<Guard perm="bugtrace.view"><P.IssueDetailPage /></Guard>} />

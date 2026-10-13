@@ -262,6 +262,7 @@ final class LicenseService
         $act = $db->table('license_activations')->where('license_id', $lic['id'])->where('installation_id', $installationId)->where('deactivated_at', null)->get()->getRowArray();
         service('audit')->record($created ? 'license.activated' : 'license.reactivated', 'license', $lic['public_id'], null,
             ['installation_id' => $installationId, 'hostname' => $hostname], null, ['type' => 'INSTALLATION', 'id' => $installationId, 'label' => $hostname ?: $installationId]);
+        (new LicenseRiskService())->evaluate($lic, $act);
 
         return [ServerAutoUpdateService::sign([
             'type'             => 'license_activation',
@@ -319,8 +320,13 @@ final class LicenseService
                     $set['transfer_state']         = null;
                 }
             }
+            if (isset($in['integrity_status']) && in_array($in['integrity_status'], ['HEALTHY', 'MODIFIED', 'COMPROMISED', 'UNVERIFIED'], true)) {
+                $set['integrity_status'] = $in['integrity_status'];
+                $set['integrity_at']     = Catalog::now();
+            }
             $db->table('license_activations')->where('id', $act['id'])->update($set);
             $act = $db->table('license_activations')->where('id', $act['id'])->get()->getRowArray();
+            (new LicenseRiskService())->evaluate($lic, $act);
         }
         $set = ['last_check_at' => Catalog::now()];
         foreach (['version' => 64] as $k => $len) {
@@ -424,6 +430,22 @@ final class LicenseService
             'expires_at'   => $dl['expires_at'],
             'manifest'     => json_decode((string) $man['manifest_json'], true),
         ];
+    }
+
+    /**
+     * The revocation manifest: revoked licences, installations whose activation was deactivated
+     * (their credentials are void), and revoked signing keys. Signed with the update-response key,
+     * valid a day; a server that finds itself here stops trusting its cached entitlement at once.
+     */
+    public function revocations(): array
+    {
+        $db   = db_connect();
+        $lics = array_column($db->table('licenses')->select('public_id')->where('status', 'REVOKED')->orderBy('id')->get()->getResultArray(), 'public_id');
+        $inst = array_values(array_unique(array_column($db->table('license_activations')->select('installation_id')->where('deactivated_at IS NOT NULL', null, false)
+            ->where('installation_id NOT IN (SELECT installation_id FROM license_activations WHERE deactivated_at IS NULL)', null, false)->get()->getResultArray(), 'installation_id')));
+        $keys = $db->tableExists('signing_keys') ? array_column($db->table('signing_keys')->select('key_id')->where('status', 'REVOKED')->get()->getResultArray(), 'key_id') : [];
+
+        return ServerAutoUpdateService::sign(['type' => 'revocations', 'schema' => 1, 'revoked_licenses' => $lics, 'revoked_installations' => $inst, 'revoked_key_ids' => $keys], 86400);
     }
 
     /** POST /server/licenses/deactivate — the server frees its own slot (decommission, or before a move). */
@@ -536,7 +558,9 @@ final class LicenseService
         $state        = self::state($lic, $activation);
         $updatesUntil = $lic['updates_until'] ?: $lic['expires_at'];
         $entitled     = (new EntitlementCatalogService())->resolve($lic);
-        $eligible     = $state === 'ACTIVE' && ($updatesUntil === null || strtotime($updatesUntil . ' UTC') >= time()) && ($entitled['updates.core'] ?? true) !== false;
+        $eligible     = $state === 'ACTIVE' && ($updatesUntil === null || strtotime($updatesUntil . ' UTC') >= time()) && ($entitled['updates.core'] ?? true) !== false
+            && ($activation['integrity_status'] ?? null) !== 'COMPROMISED'
+            && ! (new LicenseRiskService())->holdsUpdates((int) $lic['id']);
 
         return [
             'token_version'      => 1,

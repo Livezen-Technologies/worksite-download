@@ -417,6 +417,8 @@ extract_package() {
   ln -sfn "$INSTALL_DIR/shared/writable" "$REL_DIR/writable"
   ln -sfn "$INSTALL_DIR/shared/.env" "$REL_DIR/.env"
   ln -sfn "$INSTALL_DIR/shared/public/uploads" "$REL_DIR/public/uploads"
+  # The verified manifest stays with the release: Admin Center › License › Code integrity proves every file against it.
+  install -m 0644 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$MANIFEST" "$REL_DIR/release-manifest.json"
   ok "WorkSuite Server $REL_VERSION build $REL_BUILD (${EDITION^})"
 }
 

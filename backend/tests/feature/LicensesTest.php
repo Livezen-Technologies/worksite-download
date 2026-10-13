@@ -296,4 +296,51 @@ final class LicensesTest extends UcTestCase
         $only = ['uuid' => $a['uuid'], 'secret' => $a['secret']];
         $this->assertSame(100, \App\Services\LicenseService::confidence($a, $only), 'components the server could not read are not counted');
     }
+
+    public function testACompromisedInstallationIsFlaggedAndLosesUpdatesUntilItIsHealthy(): void
+    {
+        $lic = $this->newLicence();
+        [, $act] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-i']);
+        [, $val] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', ['integrity_status' => 'COMPROMISED']);
+        $this->assertSame(['ACTIVE', false], [$val['status'], $val['update_eligible']], 'the licence stays active; updates stop');
+        [$s, $flags] = $this->api($this->sa, 'GET', 'api/v1/admin/license-risk');
+        $this->assertSame([200, 'integrity_compromised', 'HIGH'], [$s, $flags['data'][0]['rule'] ?? null, $flags['data'][0]['severity'] ?? null], json_encode($flags));
+
+        // Reinstalled: healthy again closes the flag by itself and updates resume.
+        [, $val] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', ['integrity_status' => 'HEALTHY']);
+        $this->assertTrue($val['update_eligible']);
+        [, $open] = $this->api($this->sa, 'GET', 'api/v1/admin/license-risk');
+        $this->assertSame(0, $open['total']);
+        [, $all] = $this->api($this->sa, 'GET', 'api/v1/admin/license-risk?status=all');
+        $this->assertSame(['RESOLVED', 'risk engine'], [$all['data'][0]['status'], $all['data'][0]['resolved_by']]);
+    }
+
+    public function testActivationChurnIsFlaggedForStaffAndResolvedWithAReason(): void
+    {
+        $lic = $this->newLicence(['max_activations' => 10]);
+        for ($i = 0; $i < 6; $i++) {
+            $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-c' . $i]);
+        }
+        [, $flags] = $this->api($this->sa, 'GET', 'api/v1/admin/license-risk');
+        $churn = array_values(array_filter($flags['data'], static fn ($f) => $f['rule'] === 'activation_churn'));
+        $this->assertCount(1, $churn, json_encode($flags));
+        $this->assertSame('MEDIUM', $churn[0]['severity']);
+        [$s] = $this->api($this->sa, 'POST', "api/v1/admin/license-risk/{$churn[0]['id']}/resolve", []);
+        $this->assertSame(422, $s, 'a resolution needs a reason');
+        [$s] = $this->api($this->sa, 'POST', "api/v1/admin/license-risk/{$churn[0]['id']}/resolve", ['resolution' => 'Customer rebuilt their test lab']);
+        $this->assertSame(200, $s);
+    }
+
+    public function testTheRevocationManifestIsSignedAndListsRevokedLicences(): void
+    {
+        $lic = $this->newLicence();
+        $this->api($this->sa, 'POST', "api/v1/admin/licenses/{$lic['id']}/revoke", ['reason' => 'Chargeback']);
+        $this->setCookie('uc_session', null);
+        $res = $this->get('api/v1/server/revocations/latest');
+        $doc = $this->json($res);
+        $this->assertSame(200, $res->response()->getStatusCode());
+        $this->assertTrue($this->verified($doc));
+        $this->assertSame('revocations', $doc['type']);
+        $this->assertContains($lic['id'], $doc['revoked_licenses']);
+    }
 }

@@ -52,11 +52,28 @@ switch (#11).
   fingerprint hashes (weights 35/25/15/10/10/5); below 60 the activation becomes
   `TRANSFER_REQUIRED` (no updates) until the licence is activated again on the
   new server. `POST /api/v1/server/licenses/deactivate` gives a server's slot back.
+- **Server packages must carry `files_digest`** in `worksuite-package.json` (the
+  SHA-256 of `files.sha256`); the validator refuses one without it, because it is
+  what lets an installed server prove its files against the release signature.
+  The installer keeps the verified manifest beside the release.
 - **One-command installer (#16).** `/install.sh` and `/install.sh.sha256` for
   Ubuntu 22.04/24.04, Debian 12, RHEL/Rocky/AlmaLinux 9 and CentOS 7 (best
   effort), and `POST /api/v1/server/install/package` (licence key in; the edition's
   newest published package, a short-lived URL and the signed release manifest).
   The WorkSuite Server download page carries the installation guide.
+
+- **Licence risk engine (P6).** Rules over what installations report and do —
+  protected code differs from the signed release, an installation running on
+  another machine, more than five activations in 24 hours, more than three
+  deactivations in seven days — raise findings at Server › Licence risk. An open
+  HIGH finding holds that licence's updates; conditions that clear (a transfer,
+  a healthy integrity report) close their own finding. Staff acknowledge or
+  resolve with a reason.
+- **Integrity reports.** Validations carry the server's code-integrity status;
+  COMPROMISED ends update eligibility for that installation.
+- **Revocation manifest.** `GET /api/v1/server/revocations/latest`, signed: revoked
+  licences, installations whose activation was deactivated, revoked signing keys.
+- **Key rotation drill** documented in `docs/key-rotation.md`.
 
 ### Changed
 

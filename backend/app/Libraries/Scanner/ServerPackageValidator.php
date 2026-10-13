@@ -163,7 +163,11 @@ final class ServerPackageValidator
         foreach (array_slice($unlisted, 0, 5) as $u) {
             $problems[] = "unlisted {$u}";
         }
-        if (isset($pkg['files_digest']) && $pkg['files_digest'] !== 'sha256:' . hash('sha256', $list)) {
+        // files_digest ties files.sha256 to the signed manifest (through package_json_sha256), which is what lets an
+        // installed server prove every file against the release key (CoreIntegrityService). Required.
+        if (! isset($pkg['files_digest'])) {
+            $problems[] = 'worksuite-package.json has no files_digest ("sha256:" + SHA-256 of files.sha256)';
+        } elseif ($pkg['files_digest'] !== 'sha256:' . hash('sha256', $list)) {
             $problems[] = 'files_digest does not match files.sha256';
         }
         $add('file_hashes', $problems === [], $problems === [] ? count($expected) . ' files verified' : implode('; ', array_slice($problems, 0, 5)));
