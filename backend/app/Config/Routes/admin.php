@@ -75,6 +75,14 @@ $routes->group('api/v1/admin', ['namespace' => 'App\Controllers\Admin', 'filter'
     $routes->put('server/installations/(:segment)/override', 'ServerReleasesController::override/$1', ['filter' => 'perm:fleet.manage']);
 
     // Server installations & managed fleet
+    // WorkSuite Server licences (the Download Center is the licence authority)
+    $routes->get('licenses', 'LicensesController::index', ['filter' => 'perm:license.view']);
+    $routes->post('licenses', 'LicensesController::create', ['filter' => 'perm:license.manage']);
+    $routes->get('licenses/(:segment)', 'LicensesController::show/$1', ['filter' => 'perm:license.view']);
+    $routes->patch('licenses/(:segment)', 'LicensesController::update/$1', ['filter' => 'perm:license.manage']);
+    $routes->post('licenses/(:segment)/renew', 'LicensesController::renew/$1', ['filter' => 'perm:license.manage']);
+    $routes->post('licenses/(:segment)/(suspend|resume|revoke)', 'LicensesController::status/$1/$2', ['filter' => 'perm:license.manage']);
+    $routes->post('licenses/(:segment)/activations/(:num)/deactivate', 'LicensesController::deactivate/$1/$2', ['filter' => 'perm:license.manage']);
     $routes->get('installations/stats', 'InstallationsController::stats', ['filter' => 'perm:installations.view']);
     $routes->get('installations', 'InstallationsController::index', ['filter' => 'perm:installations.view']);
     $routes->get('fleet', 'InstallationsController::fleetIndex', ['filter' => 'perm:installations.view']);

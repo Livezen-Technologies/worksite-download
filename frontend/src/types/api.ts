@@ -1124,3 +1124,54 @@ export interface PortalSubscription {
   channel: ChannelCode;
   enabled: boolean;
 }
+
+// ---------------------------------------------------------------- licences
+export type LicenseState = 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'NOT_STARTED' | 'DEACTIVATED';
+
+export interface LicenseActivation {
+  id: number;
+  installation_id: string;
+  hostname: string | null;
+  server_url: string | null;
+  fingerprint: string | null;
+  activated_at: string | null;
+  last_validated_at: string | null;
+  deactivated_at: string | null;
+  deactivate_reason: string | null;
+  active: boolean;
+}
+
+export interface License {
+  id: string;
+  license_key_masked: string;
+  /** Present once, in the create response only. */
+  license_key?: string;
+  organization: string;
+  contact_email: string | null;
+  edition: 'FREE' | 'BUSINESS' | 'ENTERPRISE';
+  status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+  state: LicenseState;
+  status_reason: string | null;
+  max_activations: number;
+  active_activations: number;
+  starts_at: string | null;
+  expires_at: string | null;
+  updates_until: string | null;
+  server_bound: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  activations?: LicenseActivation[];
+}
+
+export interface LicenseBody {
+  organization: string;
+  contact_email?: string;
+  edition: 'FREE' | 'BUSINESS' | 'ENTERPRISE';
+  max_activations: number;
+  expires_at: string;
+  updates_until?: string;
+  server_bound?: boolean;
+  notes?: string;
+}
