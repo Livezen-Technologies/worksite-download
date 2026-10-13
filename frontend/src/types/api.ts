@@ -1175,3 +1175,22 @@ export interface LicenseBody {
   server_bound?: boolean;
   notes?: string;
 }
+
+export type EntitlementValue = boolean | number | string | null;
+export interface EntitlementDef {
+  key: string;
+  label: string;
+  kind: 'bool' | 'limit' | 'value';
+  category: 'apps' | 'limits' | 'updates' | 'services' | 'support';
+  module: string | null;
+  description: string | null;
+}
+export interface EntitlementMatrix {
+  entitlements: EntitlementDef[];
+  editions: Record<string, Record<string, EntitlementValue>>;
+}
+export interface LicenseEntitlements {
+  edition: string;
+  addons: Record<string, EntitlementValue>;
+  resolved: Record<string, EntitlementValue>;
+}

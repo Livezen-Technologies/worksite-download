@@ -17,6 +17,8 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\PublicSite', 'filter' 
     $routes->get('subscriptions/confirm', 'CatalogController::confirmSubscription');
     $routes->get('subscriptions/unsubscribe', 'CatalogController::unsubscribe');
     $routes->get('keys', 'CatalogController::keys');
+    // The entitlement catalog: labels and each edition's values (for comparisons; grants nothing).
+    $routes->get('catalog/entitlements', 'CatalogController::entitlements');
 });
 $routes->get('api/v1/apps/(:segment)', 'PublicSite\CatalogController::app/$1', ['filter' => ['auth:optional', 'rl:public']]);
 

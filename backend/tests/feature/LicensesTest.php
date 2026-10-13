@@ -79,7 +79,8 @@ final class LicensesTest extends UcTestCase
         $this->assertSame(['ACTIVE', 'business', true, 'erp.acme.lk'], [$act['entitlement']['status'], $act['entitlement']['edition'], $act['entitlement']['update_eligible'], $act['entitlement']['hostname']]);
         $this->assertContains('crm', $act['entitlement']['modules']);   // Business
         $this->assertContains('mail', $act['entitlement']['modules']);  // and Free
-        $this->assertNotContains('payroll', $act['entitlement']['modules']); // not Enterprise
+        $this->assertNotContains('garage', $act['entitlement']['modules']); // an add-on, not in Business
+        $this->assertSame([true, 50, false], [$act['entitlement']['entitlements']['crm.enabled'], $act['entitlement']['entitlements']['core.users.max'], $act['entitlement']['entitlements']['garage.enabled']]);
         $this->seeInDatabase('server_installations', ['installation_id' => $act['installation_id'], 'edition' => 'BUSINESS']);
 
         // Same server again: same slot, new installation key.
@@ -167,5 +168,44 @@ final class LicensesTest extends UcTestCase
         $res = $this->withHeaders($auth)->call('GET', 'api/v1/server/update', ['from' => '3.0.0', 'build' => 1, 'edition' => 'business', 'channel' => 'stable']);
         $this->assertSame(402, $res->response()->getStatusCode());
         $this->assertSame('LICENSE_UPDATE_NOT_ELIGIBLE', $this->json($res)['error']['code'] ?? null);
+    }
+
+    public function testEditionValuesAndAddOnsFlowIntoTheSignedEntitlement(): void
+    {
+        $lic = $this->newLicence(); // Business
+        [$s, $m] = $this->api($this->sa, 'GET', 'api/v1/admin/entitlements');
+        $this->assertSame(200, $s);
+        $this->assertFalse($m['editions']['BUSINESS']['garage.enabled']);
+        $this->assertTrue($m['editions']['ENTERPRISE']['garage.enabled']);
+
+        // An add-on for this licence, and a new limit for the edition.
+        [$s, $j] = $this->api($this->sa, 'PUT', "api/v1/admin/licenses/{$lic['id']}/entitlements", ['values' => ['garage.enabled' => true]]);
+        $this->assertSame([200, true], [$s, $j['resolved']['garage.enabled']], json_encode($j));
+        [$s] = $this->api($this->sa, 'PUT', 'api/v1/admin/entitlements/editions/business', ['values' => ['core.users.max' => 75]]);
+        $this->assertSame(200, $s);
+        [$s, $bad] = $this->api($this->sa, 'PUT', 'api/v1/admin/entitlements/editions/business', ['values' => ['core.users.max' => 'lots']]);
+        $this->assertSame(422, $s, json_encode($bad));
+
+        [, $act] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-e']);
+        $this->assertTrue($this->verified($act));
+        $this->assertSame([true, 75], [$act['entitlement']['entitlements']['garage.enabled'], $act['entitlement']['entitlements']['core.users.max']]);
+        $this->assertContains('garage', $act['entitlement']['modules']);
+
+        // Removing the add-on takes it away again; updates.core false ends update eligibility.
+        $this->api($this->sa, 'PUT', "api/v1/admin/licenses/{$lic['id']}/entitlements", ['remove' => ['garage.enabled'], 'values' => ['updates.core' => false]]);
+        [, $val] = $this->server('POST', 'api/v1/server/licenses/validate', ['Authorization' => 'Installation ' . $act['installation_key']]);
+        $this->assertSame([false, false], [$val['entitlements']['garage.enabled'], $val['update_eligible']]);
+
+        // A new key in the catalog appears for every edition, off.
+        [$s, $m] = $this->api($this->sa, 'POST', 'api/v1/admin/entitlements', ['key' => 'repairmate.enabled', 'label' => 'RepairMate', 'kind' => 'bool', 'category' => 'apps']);
+        $this->assertSame([201, false], [$s, $m['editions']['ENTERPRISE']['repairmate.enabled']], json_encode($m));
+
+        // The public catalog shows labels and values; viewers cannot change them.
+        $this->setCookie('uc_session', null);
+        $res = $this->get('api/v1/catalog/entitlements');
+        $this->assertSame(200, $res->response()->getStatusCode());
+        $viewer = $this->makeUser(['viewer'], 'viewer-ent@livezen.lk');
+        [$s] = $this->api($viewer, 'PUT', 'api/v1/admin/entitlements/editions/free', ['values' => ['crm.enabled' => false]]);
+        $this->assertSame(403, $s);
     }
 }

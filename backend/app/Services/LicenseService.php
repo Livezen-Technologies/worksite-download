@@ -380,7 +380,8 @@ final class LicenseService
     {
         $state        = self::state($lic, $activation);
         $updatesUntil = $lic['updates_until'] ?: $lic['expires_at'];
-        $eligible     = $state === 'ACTIVE' && ($updatesUntil === null || strtotime($updatesUntil . ' UTC') >= time());
+        $entitled     = (new EntitlementCatalogService())->resolve($lic);
+        $eligible     = $state === 'ACTIVE' && ($updatesUntil === null || strtotime($updatesUntil . ' UTC') >= time()) && ($entitled['updates.core'] ?? true) !== false;
 
         return [
             'token_version'      => 1,
@@ -390,7 +391,8 @@ final class LicenseService
             'message'            => self::stateMessage($state),
             'edition'            => strtolower($lic['edition']),
             'organization'       => $lic['organization'],
-            'modules'            => self::editionModules($lic['edition']),
+            'entitlements'       => $entitled,
+            'modules'            => EntitlementCatalogService::modules($entitled),
             'installation_id'    => $activation['installation_id'] ?? null,
             'hostname'           => $activation['hostname'] ?? null,
             'fingerprint'        => (bool) $lic['server_bound'] ? ($activation['fingerprint'] ?? null) : null,

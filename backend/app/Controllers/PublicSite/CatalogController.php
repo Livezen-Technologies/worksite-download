@@ -89,6 +89,11 @@ class CatalogController extends BaseApiController
     }
 
     /** Public keys clients pin / refresh during rotation (FR-UC-MAN-06). */
+    public function entitlements()
+    {
+        return $this->cached((new \App\Services\EntitlementCatalogService())->matrix(), 300);
+    }
+
     public function keys()
     {
         $db   = db_connect();
