@@ -13,6 +13,43 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+Already deployed to download.worksuitecloud.com on 2026-10-13 (backend and
+admin only; `/VERSION` not bumped): the licence authority for WorkSuite
+Server (#12, #13), and the two-person switch (#11).
+
+### Added
+
+- **WorkSuite Server licences (#12).** Server › Licences generates a key
+  (`WS-XXXX-XXXX-XXXX-XXXX-XXXX`, shown once; only its SHA-256 and last four
+  characters are stored) with an edition, an expiry, an "updates until" date,
+  a number of servers and server binding, and renews, suspends, resumes and
+  revokes it or frees a server's slot. Permissions `license.view` (Super Admin,
+  Release Manager, Support) and `license.manage` (Super Admin).
+- **Licence API for servers.** `POST /api/v1/server/licenses/activate` (key in;
+  installation key and entitlement out, registering or linking the
+  installation), `POST /api/v1/server/licenses/validate` (installation key;
+  current state) and `POST /api/v1/server/licenses/inspect` (what a key would
+  grant, without activating it). Every answer is signed with the
+  update-response key and carries `token_version` 1.
+- **Entitlement catalog (#13, IMPL-LIC-01 P0).** Keys such as `crm.enabled`,
+  `core.users.max`, `updates.channel.lts` and `support.priority`; each edition's
+  value (seeded from the licensing plan's placeholder table, every WorkSuite
+  Server module with its `<module>.enabled`); per-licence add-ons. A licence's
+  resolved map is signed into every licence answer. Edited at Server ›
+  Entitlements and in a licence's Add-ons; published at
+  `GET /api/v1/catalog/entitlements`.
+- **Two-person switch (#11).** `updatecenter.twoPersonRuleDisabled = true` lets one
+  staff member pass QA, approve and publish (server releases included); the
+  approvals are still required and recorded. On in production since
+  2026-10-13 at the owner's request.
+
+### Changed
+
+- `GET /api/v1/server/update` and `POST /api/v1/server/downloads/grant` refuse
+  an installation activated with a licence key once that licence is not active
+  and update-eligible (402 `LICENSE_UPDATE_NOT_ELIGIBLE`); `updates.core` false
+  ends update eligibility too. Installations linked the older way are unchanged.
+
 ## [0.6.0] - 2026-10-13
 
 ### Added
