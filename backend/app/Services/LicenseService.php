@@ -80,7 +80,7 @@ final class LicenseService
         $now = Catalog::now();
         $db  = db_connect();
         $db->table('licenses')->insert($set + [
-            'public_id' => Ulid::prefixed('lic'), 'key_hash' => self::hashKey($key), 'key_last4' => substr($key, -4),
+            'public_id' => Ulid::prefixed('lic'), 'key_hash' => self::hashKey($key), 'key_last4' => substr($key, -4), 'key_sealed' => \App\Libraries\SecretStore::seal($key),
             'status' => 'ACTIVE', 'created_by' => $createdBy, 'created_at' => $now, 'updated_at' => $now,
         ]);
         $row = $db->table('licenses')->where('id', $db->insertID())->get()->getRowArray();
@@ -499,6 +499,13 @@ final class LicenseService
         if ($lic === null) {
             throw new ApiException('LICENSE_KEY_INVALID', 'This licence key is not valid.', 404);
         }
+
+        return $this->offlineFor($lic, is_array($req) ? $req : null);
+    }
+
+    /** Offline activation for a known licence (the key above, or the Customer Portal's signed-in customer). */
+    public function offlineFor(array $lic, ?array $req): array
+    {
         if (! is_array($req) || ($req['type'] ?? '') !== 'license_request' || (int) ($req['schema'] ?? 0) !== 1
             || ! preg_match('/^[A-Za-z0-9_.:-]{6,64}$/', (string) ($req['installation_id'] ?? '')) || ! preg_match('/^[A-Za-z0-9_-]{16,64}$/', (string) ($req['nonce'] ?? ''))) {
             throw ApiException::validation(['request' => 'Not a WorkSuite licence request file (.wsr)']);
@@ -739,6 +746,10 @@ final class LicenseService
         if (array_key_exists('server_bound', $in)) {
             $set['server_bound'] = $in['server_bound'] ? 1 : 0;
         }
+        if (array_key_exists('customer_ref', $in)) {
+            $ref = trim((string) $in['customer_ref']);
+            $set['customer_ref'] = $ref === '' ? null : substr($ref, 0, 64);
+        }
         if (array_key_exists('notes', $in)) {
             $set['notes'] = trim((string) $in['notes']) ?: null;
         }
@@ -775,6 +786,9 @@ final class LicenseService
             'updates_until'      => Catalog::iso($r['updates_until'] ?: $r['expires_at']),
             'server_bound'       => (bool) $r['server_bound'],
             'notes'              => $r['notes'],
+            'customer_ref'       => $r['customer_ref'] ?? null,
+            'is_trial'           => (bool) ($r['is_trial'] ?? false),
+            'key_revealable'     => ! empty($r['key_sealed']),
             'created_by'         => $r['created_by'],
             'created_at'         => Catalog::iso($r['created_at']),
             'updated_at'         => Catalog::iso($r['updated_at']),
