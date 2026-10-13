@@ -18,6 +18,14 @@ Already deployed to download.worksuitecloud.com on 2026-10-13 and 2026-10-14
 WorkSuite Server (#12, #13, #15), the installer (#16), and the two-person
 switch (#11).
 
+### Added
+
+- **Staging install test, recorded in the admin.** A release's Server metadata
+  form now has *Staging install test* (Not reported / Running / Passed / Failed)
+  and a report link or note. Until now only an API call could set it, so the
+  publish checklist's "Staging install test passed" could never be met from
+  the admin. Saved through the audited server-meta endpoint.
+
 ### Fixed
 
 - **Server › Licences, Entitlements and Licence risk were hidden from every
