@@ -352,6 +352,80 @@ final class LicenseService
         }
     }
 
+    /**
+     * POST /server/install/package — the one-command installer's download (IMPL-LIC-01 §7): a licence key
+     * in; the newest published WorkSuite Server package for that licence's edition on the channel, a
+     * short-lived download URL, and the release manifest as signed (verified by the installer against the
+     * pinned release key before anything is unpacked). Nothing is activated here; the installed server
+     * activates the key itself.
+     */
+    public function installPackage(array $in): array
+    {
+        $key = trim((string) ($in['license_key'] ?? ''));
+        $lic = $key === '' ? null : db_connect()->table('licenses')->where('key_hash', self::hashKey($key))->get()->getRowArray();
+        if ($lic === null) {
+            throw new ApiException('LICENSE_KEY_INVALID', 'This licence key is not valid. Check it, or get one from the WorkSuite Download Center.', 404);
+        }
+        $state = self::state($lic);
+        if ($state !== 'ACTIVE') {
+            throw new ApiException('LICENSE_' . $state, self::stateMessage($state), 403);
+        }
+        $ent = $this->entitlement($lic, null);
+        if (! $ent['update_eligible']) {
+            throw new ApiException('LICENSE_UPDATE_NOT_ELIGIBLE', 'This licence is not eligible for downloads. Renew it in the WorkSuite Download Center.', 402);
+        }
+        $channel = strtoupper(trim((string) ($in['channel'] ?? 'STABLE')));
+        if (! in_array($channel, ['STABLE', 'BETA', 'LTS'], true)) {
+            throw ApiException::validation(['channel' => 'stable, beta or lts']);
+        }
+        if ($channel === 'LTS' && ($ent['entitlements']['updates.channel.lts'] ?? false) !== true) {
+            throw new ApiException('ENTITLEMENT_REQUIRED', 'This licence does not include the LTS channel.', 403);
+        }
+        $db  = db_connect();
+        $app = (new ServerUpdateService())->serverApp();
+        $ch  = $db->table('release_channels')->where('code', $channel)->groupStart()->where('application_id', $app['id'])->orWhere('application_id', null)->groupEnd()->orderBy('application_id', 'DESC')->get()->getRowArray();
+        if ($ch === null) {
+            throw ApiException::notFound('CHANNEL_NOT_FOUND', 'That channel is not available for WorkSuite Server.');
+        }
+        $q = $db->table('releases r')
+            ->select('r.*, p.public_id AS pkg_public_id, p.id AS pkg_id')
+            ->join('release_packages p', 'p.release_id = r.id')
+            ->where('r.application_id', $app['id'])->where('r.channel_id', $ch['id'])->where('r.status', 'PUBLISHED')->where('r.support_state !=', 'BLOCKED')
+            ->where('p.platform', 'server')->where('p.package_type', 'zip')->where('p.status', 'READY')->where('p.edition', $lic['edition']);
+        if (! empty($in['version'])) {
+            $q->where('r.version', (string) $in['version']);
+        }
+        $rel = $q->orderBy('r.version_sort', 'DESC')->orderBy('r.build_number', 'DESC')->limit(1)->get()->getRowArray();
+        if ($rel === null) {
+            throw ApiException::notFound('NO_PACKAGE', 'No published WorkSuite Server ' . ucfirst(strtolower($lic['edition'])) . ' package on the ' . strtolower($channel) . ' channel yet.');
+        }
+        $man = (new ManifestService())->latestSigned((int) $rel['id']);
+        if ($man === null) {
+            throw ApiException::notFound('NO_MANIFEST', 'That release has no signed manifest yet.');
+        }
+        $rev = $db->table('release_package_revisions')->where('release_package_id', $rel['pkg_id'])->whereIn('status', ['READY'])->orderBy('id', 'DESC')->get()->getRowArray();
+        if ($rev === null) {
+            throw ApiException::notFound('NO_PACKAGE', 'The package has no ready file.');
+        }
+        $resolver = new UpdateResolverService();
+        $grant    = $resolver->issueGrant(['public_id' => $rel['pkg_public_id'], 'rev_public_id' => $rev['public_id']], 'install:' . $lic['public_id'], 3600);
+        $dl       = $resolver->redeemGrant($grant['grant']);
+        service('audit')->record('license.install_download', 'license', $lic['public_id'], null, ['version' => $rel['version'], 'build' => (int) $rel['build_number'], 'channel' => $channel]);
+
+        return [
+            'version'      => $rel['version'],
+            'build'        => (int) $rel['build_number'],
+            'edition'      => strtolower($lic['edition']),
+            'channel'      => strtolower($channel),
+            'file_name'    => $rev['file_name'],
+            'size'         => (int) $rev['size_bytes'],
+            'sha256'       => $rev['sha256'],
+            'download_url' => $dl['download_url'],
+            'expires_at'   => $dl['expires_at'],
+            'manifest'     => json_decode((string) $man['manifest_json'], true),
+        ];
+    }
+
     /** POST /server/licenses/deactivate — the server frees its own slot (decommission, or before a move). */
     public function deactivateSelf(array $inst, array $in): array
     {

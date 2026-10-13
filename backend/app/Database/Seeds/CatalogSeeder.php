@@ -132,7 +132,7 @@ class CatalogSeeder extends Seeder
     private static function requirements(string $kind): array
     {
         if ($kind === 'SERVER') {
-            return ['server' => ['PHP 8.2 – 8.4 with intl, sodium, imap, mbstring, gd', 'MariaDB 10.6+ or MySQL 8.0+', 'Redis 7', '4 vCPU, 8 GB RAM, 20 GB free disk', 'Linux (Ubuntu 22.04/24.04, Debian 12, RHEL 9)']];
+            return ['server' => \App\Database\ServerInstallGuide::REQUIREMENTS];
         }
 
         return [
@@ -145,7 +145,7 @@ class CatalogSeeder extends Seeder
     private static function installHelp(string $kind): array
     {
         if ($kind === 'SERVER') {
-            return ['server' => "Existing installations update from **Admin Center › System › Updates**. For air-gapped servers, download the edition ZIP and its signed release manifest, then upload both in **System › Updates › Manual package**."];
+            return ['server' => \App\Database\ServerInstallGuide::GUIDE];
         }
 
         return [

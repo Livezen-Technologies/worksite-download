@@ -203,6 +203,34 @@ final class ServerAutoUpdateTest extends UcTestCase
         $this->assertSame('mode', $j['policy']['locked_fields'][0]['field']);
     }
 
+    public function testTheInstallerDownloadsTheLicencesEditionWithItsSignedManifest(): void
+    {
+        $id = $this->serverReleaseInTesting('3.4.2', 34014, 'MINOR');
+        [$s, $j] = $this->api($this->rm, 'POST', "api/v1/admin/server/releases/{$id}/publish", ['confirm_version' => '3.4.2', 'reason' => 'Release day']);
+        $this->assertSame([200, 'PUBLISHED'], [$s, $j['status'] ?? null], json_encode($j));
+
+        $sa = $this->makeUser(['super_admin'], 'sa-inst@livezen.lk');
+        [$s, $lic] = $this->api($sa, 'POST', 'api/v1/admin/licenses', ['organization' => 'Acme', 'edition' => 'business', 'expires_at' => gmdate('Y-m-d', time() + 365 * 86400)]);
+        $this->assertSame(201, $s, json_encode($lic));
+
+        $this->setCookie('uc_session', null);
+        $res = $this->withBodyFormat('json')->post('api/v1/server/install/package', ['license_key' => $lic['license_key']]);
+        $doc = $this->json($res);
+        $this->assertSame(200, $res->response()->getStatusCode(), json_encode($doc));
+        $this->assertSame(['3.4.2', 34014, 'business', 'stable'], [$doc['version'], $doc['build'], $doc['edition'], $doc['channel']]);
+        $this->assertNotEmpty($doc['download_url']);
+        // The installer trusts the manifest only through the release key, and finds the package's SHA-256 in it.
+        $this->assertTrue(Ed25519::verifyDocument($doc['manifest'], KeyRegistry::releaseKeys()));
+        $this->assertContains($doc['sha256'], array_column($doc['manifest']['packages'], 'sha256'));
+
+        // An Enterprise licence has no package on this release; a bad key is refused; LTS needs the entitlement.
+        [, $ent] = $this->api($sa, 'POST', 'api/v1/admin/licenses', ['organization' => 'Big', 'edition' => 'enterprise', 'expires_at' => gmdate('Y-m-d', time() + 365 * 86400)]);
+        $this->setCookie('uc_session', null);
+        $this->assertSame(404, $this->withBodyFormat('json')->post('api/v1/server/install/package', ['license_key' => $ent['license_key']])->response()->getStatusCode());
+        $this->assertSame(404, $this->withBodyFormat('json')->post('api/v1/server/install/package', ['license_key' => 'WS-AAAA-BBBB-CCCC-DDDD-EEEE'])->response()->getStatusCode());
+        $this->assertSame(403, $this->withBodyFormat('json')->post('api/v1/server/install/package', ['license_key' => $lic['license_key'], 'channel' => 'lts'])->response()->getStatusCode());
+    }
+
     public function testTwoPersonRuleSwitchLetsTheQaApproverPublish(): void
     {
         $qaAndRm = $this->makeUser(['qa', 'release_manager'], 'qa-rm-solo@livezen.lk');

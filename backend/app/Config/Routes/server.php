@@ -17,6 +17,8 @@ $routes->group('api/v1/server', ['namespace' => 'App\Controllers\Server', 'filte
     $routes->post('licenses/validate', 'ServerController::validateLicense');
     $routes->post('licenses/inspect', 'ServerController::inspectLicense');
     $routes->post('licenses/deactivate', 'ServerController::deactivateLicense');
+    // The one-command installer's download, by licence key (IMPL-LIC-01 §7)
+    $routes->post('install/package', 'ServerController::installPackage');
     $routes->get('auto-update/plan', 'ServerController::plan');
     $routes->get('auto-update/policy', 'ServerController::getPolicy');
     $routes->put('auto-update/policy', 'ServerController::putPolicy');
