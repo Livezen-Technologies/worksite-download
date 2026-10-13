@@ -78,6 +78,8 @@ $routes->group('api/v1/admin', ['namespace' => 'App\Controllers\Admin', 'filter'
     // WorkSuite Server licences (the Download Center is the licence authority)
     $routes->get('licenses', 'LicensesController::index', ['filter' => 'perm:license.view']);
     $routes->post('licenses', 'LicensesController::create', ['filter' => 'perm:license.manage']);
+    $routes->get('license-risk', 'LicenseRiskController::index', ['filter' => 'perm:license.view']);
+    $routes->post('license-risk/(:num)/(acknowledge|resolve|reopen)', 'LicenseRiskController::status/$1/$2', ['filter' => 'perm:license.manage']);
     $routes->get('entitlements', 'EntitlementsController::index', ['filter' => 'perm:license.view']);
     $routes->post('entitlements', 'EntitlementsController::define', ['filter' => 'perm:license.manage']);
     $routes->put('entitlements/editions/(:segment)', 'EntitlementsController::edition/$1', ['filter' => 'perm:license.manage']);

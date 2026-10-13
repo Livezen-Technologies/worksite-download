@@ -1194,3 +1194,21 @@ export interface LicenseEntitlements {
   addons: Record<string, EntitlementValue>;
   resolved: Record<string, EntitlementValue>;
 }
+
+export interface LicenseRiskFlag {
+  id: number;
+  license_id: string;
+  organization: string;
+  license_key_masked: string;
+  installation_id: string | null;
+  rule: string;
+  label: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  detail: Record<string, unknown> | null;
+  status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+  occurrences: number;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  resolved_by: string | null;
+  resolution: string | null;
+}

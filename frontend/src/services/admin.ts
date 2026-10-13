@@ -1,5 +1,6 @@
 import { api, buildUrl, type Query } from './api';
 import type {
+  LicenseRiskFlag,
   EntitlementMatrix,
   EntitlementValue,
   LicenseEntitlements,
@@ -81,6 +82,7 @@ export const adminKeys = {
   license: (id: string) => ['admin', 'licenses', 'one', id] as const,
   licenseEntitlements: (id: string) => ['admin', 'licenses', 'one', id, 'entitlements'] as const,
   entitlements: ['admin', 'entitlements'] as const,
+  licenseRisk: (status: string) => ['admin', 'license-risk', status] as const,
   serverReleases: (f: Query) => ['admin', 'server-releases', f] as const,
   serverRollout: (id: string) => ['admin', 'server-rollout', id] as const,
   analytics: (kind: string, f: Query) => ['admin', 'analytics', kind, f] as const,
@@ -174,6 +176,8 @@ export const adminApi = {
   renewLicense: (id: string, body: { expires_at: string; updates_until?: string }) => api.post<License>(`${A}/licenses/${id}/renew`, body),
   licenseStatus: (id: string, action: 'suspend' | 'resume' | 'revoke', body: { reason?: string }) => api.post<License>(`${A}/licenses/${id}/${action}`, body),
   entitlements: () => api.get<EntitlementMatrix>(`${A}/entitlements`),
+  licenseRisk: (q: Query) => api.get<ListResponse<LicenseRiskFlag>>(`${A}/license-risk`, q),
+  licenseRiskStatus: (id: number, action: 'acknowledge' | 'resolve' | 'reopen', body: { resolution?: string }) => api.post<{ id: number; status: string }>(`${A}/license-risk/${id}/${action}`, body),
   defineEntitlement: (body: { key: string; label: string; kind: string; category: string; description?: string }) => api.post<EntitlementMatrix>(`${A}/entitlements`, body),
   setEditionEntitlements: (edition: string, values: Record<string, EntitlementValue>) => api.put<EntitlementMatrix>(`${A}/entitlements/editions/${edition}`, { values }),
   licenseEntitlements: (id: string) => api.get<LicenseEntitlements>(`${A}/licenses/${id}/entitlements`),

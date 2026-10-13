@@ -135,4 +135,10 @@ class ServerController extends BaseApiController
     {
         return $this->ok((new \App\Services\LicenseService())->installPackage($this->body()));
     }
+
+    /** GET /server/revocations/latest — signed, a day's validity; servers fetch it with each validation. */
+    public function revocations()
+    {
+        return $this->ok((new \App\Services\LicenseService())->revocations());
+    }
 }
