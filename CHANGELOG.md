@@ -13,9 +13,10 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
-Already deployed to download.worksuitecloud.com on 2026-10-13 (backend and
-admin only; `/VERSION` not bumped): the licence authority for WorkSuite
-Server (#12, #13), and the two-person switch (#11).
+Already deployed to download.worksuitecloud.com on 2026-10-13 and 2026-10-14
+(backend and admin only; `/VERSION` not bumped): the licence authority for
+WorkSuite Server (#12, #13, #15), the installer (#16), and the two-person
+switch (#11).
 
 ### Added
 
@@ -42,6 +43,20 @@ Server (#12, #13), and the two-person switch (#11).
   staff member pass QA, approve and publish (server releases included); the
   approvals are still required and recorded. On in production since
   2026-10-13 at the owner's request.
+
+- **Signed installation requests (#15).** Activation also issues a request
+  secret (sealed with the app key); servers then authenticate licence calls with
+  `WS-HMAC-SHA256` (timestamp within five minutes, a nonce accepted once, HMAC
+  over method, path, time, nonce and body hash). Installation keys still work.
+- **Fingerprint confidence and transfer (#15).** Servers send per-component
+  fingerprint hashes (weights 35/25/15/10/10/5); below 60 the activation becomes
+  `TRANSFER_REQUIRED` (no updates) until the licence is activated again on the
+  new server. `POST /api/v1/server/licenses/deactivate` gives a server's slot back.
+- **One-command installer (#16).** `/install.sh` and `/install.sh.sha256` for
+  Ubuntu 22.04/24.04, Debian 12, RHEL/Rocky/AlmaLinux 9 and CentOS 7 (best
+  effort), and `POST /api/v1/server/install/package` (licence key in; the edition's
+  newest published package, a short-lived URL and the signed release manifest).
+  The WorkSuite Server download page carries the installation guide.
 
 ### Changed
 
