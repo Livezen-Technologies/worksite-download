@@ -44,6 +44,7 @@ DOMAIN=""; ADMIN_EMAIL=""; ORG_NAME=""; LICENSE_KEY="${WORKSUITE_LICENSE_KEY:-}"
 PACKAGE=""; MANIFEST=""
 INSTALL_DIR="/var/www/worksuite"; PHP_V="8.3"; NODE_MAJOR="20"
 DB_HOST="localhost"; DB_PORT="3306"; DB_NAME="worksuite"; DB_USER="worksuite"; DB_PASS=""
+INSTALL_TYPE="production"; FP_MODE="machine"; OFFLINE=0
 EXTERNAL_DB=0; TIMEZONE=""; SSL=1; FIREWALL=1; WHATSAPP=1; REALTIME=1
 NONINTERACTIVE=0; REPAIR=0; DRY_RUN=0; SKIP_PRECHECK=0
 EDITION=""; REL_VERSION=""; REL_BUILD=""; REL_DIR=""; ADMIN_PASS=""; RAM_MB=0; WORK=""; PKG_SHA=""
@@ -85,6 +86,13 @@ Options:
   --channel stable|beta|lts   Release channel (default stable; lts needs a licence that includes it).
   --version X.Y.Z          A specific published version instead of the newest.
   --package FILE --manifest FILE   Install from a downloaded package and its signed manifest (no download).
+  --offline                With --package/--manifest, for a server that cannot reach the WorkSuite Download
+                           Center: no licence check online; the installer writes the offline activation
+                           request (.wsr) at the end. System packages still come from your OS mirrors.
+  --installation-type production|staging|dr   Staging and disaster-recovery servers use their own licence
+                           limits, not a production slot (default production).
+  --cluster                One installation on several nodes: the licence fingerprint leaves the machine out,
+                           so all nodes share one activation (writable/ and the database must be shared).
   --install-dir DIR        Default /var/www/worksuite.
   --db-host H --db-port P --db-name N --db-user U --db-pass P   Use an existing MySQL/MariaDB server.
   --timezone ZONE          Default: the server's timezone.
@@ -112,6 +120,9 @@ parse_args() {
       --package) PACKAGE="${2:-}"; shift 2;;
       --manifest) MANIFEST="${2:-}"; shift 2;;
       --install-dir) INSTALL_DIR="${2:-}"; shift 2;;
+      --installation-type) INSTALL_TYPE="${2:-}"; shift 2;;
+      --cluster) FP_MODE="cluster"; shift;;
+      --offline) OFFLINE=1; shift;;
       --db-host) DB_HOST="${2:-}"; EXTERNAL_DB=1; shift 2;;
       --db-port) DB_PORT="${2:-}"; shift 2;;
       --db-name) DB_NAME="${2:-}"; shift 2;;
@@ -130,8 +141,11 @@ parse_args() {
       *) die "Unknown option: $1 (see --help)";;
     esac
   done
+  INSTALL_TYPE=${INSTALL_TYPE,,}
+  [[ "$INSTALL_TYPE" =~ ^(production|staging|dr)$ ]] || die "--installation-type must be production, staging or dr"
   CHANNEL=${CHANNEL,,}
   [[ "$CHANNEL" =~ ^(stable|beta|lts)$ ]] || die "--channel must be stable, beta or lts"
+  if [[ $OFFLINE -eq 1 && ( -z "$PACKAGE" || -z "$MANIFEST" ) ]]; then die "--offline needs --package and --manifest"; fi
   if [[ -n "$PACKAGE" || -n "$MANIFEST" ]]; then [[ -f "$PACKAGE" && -f "$MANIFEST" ]] || die "--package and --manifest must both name existing files"; fi
 }
 
@@ -206,15 +220,18 @@ precheck() {
 
 collect_inputs() {
   step "Installation details"
-  ask LICENSE_KEY "WorkSuite licence key (WS-XXXX-XXXX-XXXX-XXXX-XXXX)"
-  LICENSE_KEY=$(tr '[:lower:]' '[:upper:]' <<<"${LICENSE_KEY// /}")
-  [[ "$LICENSE_KEY" =~ ^WS-?([A-Z0-9]{4}-?){5}$ ]] || die "That does not look like a WorkSuite licence key (WS-XXXX-XXXX-XXXX-XXXX-XXXX)."
+  if [[ $OFFLINE -eq 0 ]]; then
+    ask LICENSE_KEY "WorkSuite licence key (WS-XXXX-XXXX-XXXX-XXXX-XXXX)"
+    LICENSE_KEY=$(tr '[:lower:]' '[:upper:]' <<<"${LICENSE_KEY// /}")
+    [[ "$LICENSE_KEY" =~ ^WS-?([A-Z0-9]{4}-?){5}$ ]] || die "That does not look like a WorkSuite licence key (WS-XXXX-XXXX-XXXX-XXXX-XXXX)."
+  fi
   ask DOMAIN "Domain name for WorkSuite (e.g. erp.example.com)"
   DOMAIN=${DOMAIN,,}; [[ "$DOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] || die "Invalid domain: $DOMAIN"
   ask ADMIN_EMAIL "Administrator email"
   [[ "$ADMIN_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "Invalid email: $ADMIN_EMAIL"
   ask ORG_NAME "Organisation name" "$DOMAIN"
   [[ -n "$TIMEZONE" ]] || TIMEZONE=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+  [[ $OFFLINE -eq 1 ]] && return 0
   local pub dns
   pub=$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || true)
   dns=$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk 'NR==1{print $1}' || true)
@@ -238,6 +255,14 @@ dc_post() { # dc_post PATH JSON → response body on stdout; non-2xx dies with t
 }
 
 check_license() {
+  if [[ $OFFLINE -eq 1 ]]; then
+    step "Licence: offline activation after installing"
+    EDITION=$(unzip -p "$PACKAGE" worksuite-package.json 2>/dev/null | sed -n 's/.*"edition"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' | head -1)
+    [[ "$EDITION" =~ ^(free|professional|business|enterprise)$ ]] || die "Cannot read the package's edition."
+    [[ "$EDITION" == professional ]] && EDITION=free
+    ok "${EDITION^} package; the licence is activated offline at the end"
+    return 0
+  fi
   step "Checking the licence with the WorkSuite Download Center"
   local body; body=$(dc_post /api/v1/server/licenses/inspect "{\"license_key\":\"$LICENSE_KEY\"}")
   local status org until
@@ -503,6 +528,8 @@ systemupdate.jobSigningKey = '$jobkey'
 systemupdate.edition = $EDITION
 systemupdate.channel = $CHANNEL
 license.enforcement = enforce
+license.installationType = ${INSTALL_TYPE^^}
+license.fingerprintMode = $FP_MODE
 
 # The first administrator (InstallSeeder); removed by the installer once created.
 install.admin_email = '$ADMIN_EMAIL'
@@ -635,8 +662,14 @@ activate_release() {
   # The password stays only in the root-only credentials file.
   sed -i '/^install\.admin_/d' "$INSTALL_DIR/shared/.env"
   ok "Administrator $ADMIN_EMAIL (asked to change the password at first sign-in)"
-  spark license:activate --key "$LICENSE_KEY" >>"$LOG" 2>&1 || die "The licence could not be activated on this server: $(grep -E 'LICENSE_|could not' "$LOG" | tail -1)"
-  ok "Licence activated on this server"
+  if [[ $OFFLINE -eq 1 ]]; then
+    (cd "$INSTALL_DIR/current" && sudo -u "$WEB_USER" -H "$PHP_BIN" spark license:export-request --out "$INSTALL_DIR/shared/writable/worksuite-request.wsr") >>"$LOG" 2>&1 || die "The offline activation request could not be written."
+    cp "$INSTALL_DIR/shared/writable/worksuite-request.wsr" /root/worksuite-request.wsr
+    ok "Offline activation request: /root/worksuite-request.wsr"
+  else
+    spark license:activate --key "$LICENSE_KEY" >>"$LOG" 2>&1 || die "The licence could not be activated on this server: $(grep -E 'LICENSE_|could not' "$LOG" | tail -1)"
+    ok "Licence activated on this server"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -827,6 +860,14 @@ ${G}${B}WorkSuite Server is installed.${N}
 
   Next: set up outgoing mail, turn on two-factor, and keep $CRED_FILE somewhere safe before deleting it.
 EOF
+  if [[ $OFFLINE -eq 1 ]]; then
+    cat <<EOF
+
+  ${B}Offline licence:${N} take /root/worksuite-request.wsr to a computer with internet, upload it with your
+  licence key at $WS_DOWNLOAD_CENTER/offline-activation, bring back the .wsl file, and import it in
+  Admin Center › System › License (or: sudo -u $WEB_USER $PHP_BIN $INSTALL_DIR/current/spark license:import FILE.wsl).
+EOF
+  fi
 }
 
 main() {

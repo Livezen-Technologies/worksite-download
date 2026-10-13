@@ -85,6 +85,15 @@ sha256sum -c install.sh.sha256
 
 Run `bash install.sh --help` for all of them. The key can also come from `WORKSUITE_LICENSE_KEY`.
 
+### Servers without internet access
+
+With an Enterprise licence, WorkSuite Server runs without ever reaching the Download Center:
+
+1. Download the package and its signed manifest from your WorkSuite account, and copy them and `install.sh` to the server (it still needs your operating system's package mirrors).
+2. `sudo bash install.sh --offline --package worksuite-server-….zip --manifest manifest.json --domain … --admin-email …`
+3. Take `/root/worksuite-request.wsr` to a computer with internet and upload it with your licence key at [Offline activation](https://download.worksuitecloud.com/offline-activation).
+4. Import the licence file (.wsl) you get back in **Admin Center › System › License**. It lasts until the licence ends or a year, whichever is first; repeat to renew.
+
 ### After installing
 
 - Sign in at your domain and change the temporary password; turn on two-factor.

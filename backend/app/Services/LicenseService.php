@@ -206,17 +206,8 @@ final class LicenseService
 
         $db     = db_connect();
         $now    = Catalog::now();
-        $active = $db->table('license_activations')->where('license_id', $lic['id'])->where('deactivated_at', null)->get()->getResultArray();
-        $slot   = null;
-        foreach ($active as $a) {
-            if (($askedId !== null && $a['installation_id'] === $askedId) || ($fingerprint !== null && $fingerprint !== '' && $a['fingerprint'] === $fingerprint)) {
-                $slot = $a;
-                break;
-            }
-        }
-        if ($slot === null && count($active) >= max(1, (int) $lic['max_activations'])) {
-            throw new ApiException('LICENSE_ACTIVATION_LIMIT', 'This licence is already activated on ' . count($active) . ' server(s), its limit. Deactivate one in the WorkSuite Download Center, or use another key.', 409);
-        }
+        $type   = self::installationType($in);
+        $slot   = $this->slotFor($lic, $type, $askedId, $fingerprint);
         $installationId = $slot['installation_id'] ?? $askedId ?? Ulid::prefixed('inst');
 
         // Register or link the installation (the same row the update API uses).
@@ -250,13 +241,13 @@ final class LicenseService
         if ($created) {
             $db->table('license_activations')->insert([
                 'license_id' => $lic['id'], 'installation_id' => $installationId, 'fingerprint' => $fingerprint, 'hostname' => $hostname, 'server_url' => $serverUrl,
-                'activated_at' => $now, 'last_validated_at' => $now, 'created_at' => $now, 'updated_at' => $now,
+                'installation_type' => $type, 'activated_at' => $now, 'last_validated_at' => $now, 'created_at' => $now, 'updated_at' => $now,
             ] + $fp);
         } else {
             if ($slot['transfer_state'] ?? null) {
                 service('audit')->record('license.transferred', 'license', $lic['public_id'], ['fingerprint_confidence' => $slot['fingerprint_confidence'] ?? null], ['installation_id' => $installationId, 'hostname' => $hostname]);
             }
-            $db->table('license_activations')->where('id', $slot['id'])->update(['fingerprint' => $fingerprint ?: $slot['fingerprint'], 'hostname' => $hostname ?: $slot['hostname'], 'server_url' => $serverUrl ?: $slot['server_url'], 'last_validated_at' => $now, 'updated_at' => $now]
+            $db->table('license_activations')->where('id', $slot['id'])->update(['fingerprint' => $fingerprint ?: $slot['fingerprint'], 'hostname' => $hostname ?: $slot['hostname'], 'server_url' => $serverUrl ?: $slot['server_url'], 'installation_type' => $type, 'offline' => 0, 'last_validated_at' => $now, 'updated_at' => $now]
                 + ($components !== [] ? $fp : ['transfer_state' => null]));
         }
         $act = $db->table('license_activations')->where('license_id', $lic['id'])->where('installation_id', $installationId)->where('deactivated_at', null)->get()->getRowArray();
@@ -448,6 +439,113 @@ final class LicenseService
         return ServerAutoUpdateService::sign(['type' => 'revocations', 'schema' => 1, 'revoked_licenses' => $lics, 'revoked_installations' => $inst, 'revoked_key_ids' => $keys], 86400);
     }
 
+    public const INSTALLATION_TYPES = ['PRODUCTION', 'STAGING', 'DR'];
+
+    public static function installationType(array $in): string
+    {
+        $t = strtoupper(trim((string) ($in['installation_type'] ?? 'PRODUCTION')));
+        if (! in_array($t, self::INSTALLATION_TYPES, true)) {
+            throw ApiException::validation(['installation_type' => 'PRODUCTION, STAGING or DR']);
+        }
+
+        return $t;
+    }
+
+    /**
+     * The activation this server re-uses (same installation id, or same fingerprint), or null when a new
+     * slot is free. Production servers count against max_activations; staging and disaster-recovery
+     * servers against their own entitlements (license.staging.max, license.dr.max).
+     */
+    private function slotFor(array $lic, string $type, ?string $installationId, ?string $fingerprint): ?array
+    {
+        $active = db_connect()->table('license_activations')->where('license_id', $lic['id'])->where('deactivated_at', null)->get()->getResultArray();
+        foreach ($active as $a) {
+            if (($installationId !== null && $a['installation_id'] === $installationId) || ($fingerprint !== null && $fingerprint !== '' && $a['fingerprint'] === $fingerprint)) {
+                return $a;
+            }
+        }
+        $same = count(array_filter($active, static fn ($a) => ($a['installation_type'] ?? 'PRODUCTION') === $type));
+        if ($type === 'PRODUCTION') {
+            $max = max(1, (int) $lic['max_activations']);
+        } else {
+            $ent = (new EntitlementCatalogService())->resolve($lic);
+            $v   = $ent[$type === 'STAGING' ? 'license.staging.max' : 'license.dr.max'] ?? 0;
+            $max = $v === null ? PHP_INT_MAX : (int) $v;
+        }
+        if ($same >= $max) {
+            $what = ['PRODUCTION' => 'server(s)', 'STAGING' => 'staging server(s)', 'DR' => 'disaster-recovery server(s)'][$type];
+            throw new ApiException('LICENSE_ACTIVATION_LIMIT', $max === 0
+                ? 'This licence does not include ' . strtolower(str_replace('(s)', 's', $what)) . '.'
+                : 'This licence is already activated on ' . $same . ' ' . $what . ', its limit. Deactivate one in the WorkSuite Download Center, or use another key.', 409);
+        }
+
+        return null;
+    }
+
+    /** Longest an offline licence file stays valid without a new one. */
+    public const OFFLINE_MAX_DAYS = 365;
+
+    /**
+     * POST /server/licenses/offline — offline activation (IMPL-LIC-01 §7): the licence key and the
+     * server's request file (.wsr) in; a licence file (.wsl) out, signed, bound to that installation and
+     * that request's nonce, valid until the licence expires or a year, whichever is first. Needs the
+     * `offline.license.enabled` entitlement. The server never talks to the Download Center.
+     */
+    public function offline(array $in): array
+    {
+        $key = trim((string) ($in['license_key'] ?? ''));
+        $req = is_array($in['request'] ?? null) ? $in['request'] : json_decode((string) ($in['request'] ?? ''), true);
+        $lic = $key === '' ? null : db_connect()->table('licenses')->where('key_hash', self::hashKey($key))->get()->getRowArray();
+        if ($lic === null) {
+            throw new ApiException('LICENSE_KEY_INVALID', 'This licence key is not valid.', 404);
+        }
+        if (! is_array($req) || ($req['type'] ?? '') !== 'license_request' || (int) ($req['schema'] ?? 0) !== 1
+            || ! preg_match('/^[A-Za-z0-9_.:-]{6,64}$/', (string) ($req['installation_id'] ?? '')) || ! preg_match('/^[A-Za-z0-9_-]{16,64}$/', (string) ($req['nonce'] ?? ''))) {
+            throw ApiException::validation(['request' => 'Not a WorkSuite licence request file (.wsr)']);
+        }
+        $state = self::state($lic);
+        if ($state !== 'ACTIVE') {
+            throw new ApiException('LICENSE_' . $state, self::stateMessage($state), 403);
+        }
+        if (((new EntitlementCatalogService())->resolve($lic)['offline.license.enabled'] ?? false) !== true) {
+            throw new ApiException('ENTITLEMENT_REQUIRED', 'This licence does not include offline activation (an Enterprise feature).', 403);
+        }
+        $db    = db_connect();
+        $now   = Catalog::now();
+        $type  = self::installationType($req);
+        $inst  = (string) $req['installation_id'];
+        $fp    = isset($req['fingerprint']) ? substr((string) $req['fingerprint'], 0, 128) : null;
+        $slot  = $this->slotFor($lic, $type, $inst, $fp);
+        $until = min(strtotime(($lic['expires_at'] ?? '2999-12-31') . ' UTC') ?: PHP_INT_MAX, time() + self::OFFLINE_MAX_DAYS * 86400);
+        $comps = self::components($req);
+        $set   = [
+            'fingerprint' => $fp, 'hostname' => isset($req['hostname']) ? substr((string) $req['hostname'], 0, 191) : null, 'installation_type' => $type,
+            'offline' => 1, 'offline_request_nonce' => (string) $req['nonce'], 'offline_valid_until' => gmdate('Y-m-d H:i:s', $until),
+            'fingerprint_components' => $comps !== [] ? json_encode($comps) : null, 'fingerprint_confidence' => $comps !== [] ? 100 : null, 'transfer_state' => null,
+            'last_validated_at' => $now, 'updated_at' => $now,
+        ];
+        if ($slot === null) {
+            $db->table('license_activations')->insert($set + ['license_id' => $lic['id'], 'installation_id' => $inst, 'activated_at' => $now, 'created_at' => $now]);
+        } else {
+            $db->table('license_activations')->where('id', $slot['id'])->update($set);
+        }
+        if ($db->table('server_installations')->where('installation_id', $inst)->countAllResults() === 0) {
+            $db->table('server_installations')->insert(['installation_id' => $inst, 'edition' => $lic['edition'], 'license_id' => $lic['id'], 'mode' => 'AIR_GAPPED', 'offline_mode' => 1,
+                'name' => $set['hostname'] ?: $lic['organization'], 'build' => 0, 'registered_at' => $now, 'created_at' => $now, 'updated_at' => $now]);
+        } else {
+            $db->table('server_installations')->where('installation_id', $inst)->update(['license_id' => $lic['id'], 'edition' => $lic['edition'], 'offline_mode' => 1, 'updated_at' => $now]);
+        }
+        $act = $db->table('license_activations')->where('license_id', $lic['id'])->where('installation_id', $inst)->where('deactivated_at', null)->get()->getRowArray();
+        service('audit')->record('license.offline_activated', 'license', $lic['public_id'], null, ['installation_id' => $inst, 'valid_until' => gmdate('Y-m-d', $until), 'type' => $type]);
+
+        return ServerAutoUpdateService::sign([
+            'type'                => 'license_offline',
+            'installation_id'     => $inst,
+            'request_nonce'       => (string) $req['nonce'],
+            'offline_valid_until' => gmdate('Y-m-d\TH:i:s\Z', $until),
+        ] + $this->entitlement($lic, $act), max(60, $until - time()));
+    }
+
     /** POST /server/licenses/deactivate — the server frees its own slot (decommission, or before a move). */
     public function deactivateSelf(array $inst, array $in): array
     {
@@ -576,6 +674,7 @@ final class LicenseService
             'hostname'           => $activation['hostname'] ?? null,
             'fingerprint'        => (bool) $lic['server_bound'] ? ($activation['fingerprint'] ?? null) : null,
             'server_bound'       => (bool) $lic['server_bound'],
+            'installation_type'  => $activation['installation_type'] ?? 'PRODUCTION',
             'fingerprint_confidence' => isset($activation['fingerprint_confidence']) ? (int) $activation['fingerprint_confidence'] : null,
             'activated_at'       => Catalog::iso($activation['activated_at'] ?? null),
             'license_starts_at'  => Catalog::iso($lic['starts_at']),
