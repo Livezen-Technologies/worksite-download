@@ -28,6 +28,23 @@ switch (#11).
 
 ### Fixed
 
+- **The installer on Ubuntu 26.04.** The ondrej PPA has no builds for 26.04
+  (they moved to packages.sury.org/php), so `apt-get update` failed at step 4.
+  From Ubuntu 26 the installer adds the sury repository instead. Found by the
+  staging install test of 3.1.0+2830 on a 26.04 VM (still an untested OS:
+  `--skip-precheck`).
+- **The installer on Ubuntu 26.04's coreutils.** 26.04 ships uutils, whose
+  `install` fails reading `/dev/stdin` when the target already exists, so a
+  second run stopped at step 8. The twelve config files are now written through
+  a temp file (`put_file`).
+- **The installer's last check said the licence "needs attention" when it was
+  ACTIVE**: `grep -q` under `pipefail` killed `spark license:status` with
+  SIGPIPE. It now reads the status whole. The health check is labelled 17/17,
+  not 17/16.
+- Staging install test, 2026-10-13: WorkSuite Server 3.1.1+2888 (Enterprise) on
+  Ubuntu 26.04 (`--skip-precheck --no-ssl`) installed end to end: licence
+  ACTIVE, `integrity:check --full` HEALTHY over 9,506 files, all services up.
+
 - **Server › Licences, Entitlements and Licence risk were hidden from every
   admin.** Their `license.*` permissions were added to the role matrix after the
   first seed and never reached the database. Migration `SyncRbacPermissions`
