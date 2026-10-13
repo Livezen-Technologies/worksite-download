@@ -365,7 +365,9 @@ export function SettingsTab({ release, app }: { release: AdminReleaseDetail; app
   const meta = useReleaseMutation(r.id, () => adminApi.updateRelease(r.id, { visibility, notes: notes || null, known_issues: known || null }), 'Release updated');
   const sm = r.server_meta;
   const [srv, setSrv] = useState({ min_from_version: sm?.min_from_version ?? '', desktop_compat: sm?.desktop_compat ?? '', downtime_estimate_s: sm?.downtime_estimate_s ?? 0, admin_notice: sm?.admin_notice ?? '', advisory: sm?.advisory ?? '' });
-  const srvM = useReleaseMutation(r.id, () => adminApi.serverMeta(r.id, { ...srv, advisory: srv.advisory || null }), 'Server metadata saved');
+  const [staging, setStaging] = useState({ status: sm?.staging_test?.status ?? '', url: sm?.staging_test?.url ?? '' });
+  const stagingTest = staging.status === '' ? null : { ...(sm?.staging_test ?? {}), status: staging.status as 'PASSED' | 'FAILED' | 'PENDING', url: staging.url.trim() || undefined };
+  const srvM = useReleaseMutation(r.id, () => adminApi.serverMeta(r.id, { ...srv, advisory: srv.advisory || null, staging_test: stagingTest }), 'Server metadata saved');
   const minInvalid = !noChange && min !== '' && !isSemver(min);
   return (
     <div className="grid items-start gap-4 xl:grid-cols-2">
@@ -451,6 +453,14 @@ export function SettingsTab({ release, app }: { release: AdminReleaseDetail; app
               <TextField label="Desktop compatibility" mono value={srv.desktop_compat} onChange={(e) => setSrv({ ...srv, desktop_compat: e.target.value })} placeholder="2.6.0 - 2.8.x" />
               <TextField label="Estimated downtime (s)" type="number" value={srv.downtime_estimate_s} onChange={(e) => setSrv({ ...srv, downtime_estimate_s: Number(e.target.value) })} />
               <TextField label="Security advisory (optional)" value={srv.advisory} onChange={(e) => setSrv({ ...srv, advisory: e.target.value })} />
+              <Select
+                label="Staging install test"
+                value={staging.status}
+                onChange={(e) => setStaging({ ...staging, status: e.target.value })}
+                options={[{ value: '', label: 'Not reported' }, { value: 'PENDING', label: 'Running' }, { value: 'PASSED', label: 'Passed' }, { value: 'FAILED', label: 'Failed' }]}
+                hint="Record it only after this build was installed on a staging server. Publishing needs Passed."
+              />
+              <TextField label="Staging test report (link or note)" value={staging.url} onChange={(e) => setStaging({ ...staging, url: e.target.value })} placeholder="Where the result can be checked" />
               <TextArea label="Admin notice" rows={3} className="sm:col-span-2" value={srv.admin_notice} onChange={(e) => setSrv({ ...srv, admin_notice: e.target.value })} hint="Shown in tenant Admin Center › System › Updates and in admin emails." />
               <div className="sm:col-span-2 text-[11.5px] text-subtle">
                 Migrations: {sm.migrations?.count ?? 0} ({sm.migrations?.one_way.length ?? 0} one-way) · staging test: {sm.staging_test?.status ?? '—'}
