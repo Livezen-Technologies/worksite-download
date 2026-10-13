@@ -53,7 +53,7 @@ SWAP_MB=2048
 LOG=/var/log/worksuite-install.log
 CRED_FILE=/root/worksuite-credentials.txt
 DEPLOY_USER=worksuite-deploy
-STEP=0; TOTAL_STEPS=16
+STEP=0; TOTAL_STEPS=17
 
 # Set by detect_os(): the distribution family and everything that differs between them.
 FAMILY=""; PKG=""; WEB_USER=""; PHP_BIN=""; FPM_SERVICE=""; FPM_CONF_DIR=""; FPM_POOL_DIR=""; FPM_SOCK=""
@@ -448,6 +448,15 @@ extract_package() {
   ok "WorkSuite Server $REL_VERSION build $REL_BUILD (${EDITION^})"
 }
 
+# put_file [install options] DEST <<EOF — a heredoc into a file with mode/owner. Through a temp file:
+# uutils' install (Ubuntu 26.04's coreutils) fails reading /dev/stdin when DEST already exists.
+put_file() {
+  local dest="${@: -1}" tmp; tmp=$(mktemp)
+  cat >"$tmp"
+  install "${@:1:$#-1}" "$tmp" "$dest"; local rc=$?
+  rm -f "$tmp"; return $rc
+}
+
 # ---------------------------------------------------------------------------
 # 6. Database
 # ---------------------------------------------------------------------------
@@ -457,7 +466,7 @@ setup_database() {
   [[ $DRY_RUN -eq 1 ]] && { info "(dry run)"; return 0; }
   if [[ $EXTERNAL_DB -eq 0 ]]; then
     install -d "$(dirname "$MARIADB_CNF")"
-    install -m 0644 /dev/stdin "$MARIADB_CNF" <<EOF
+    put_file -m 0644 "$MARIADB_CNF" <<EOF
 [mysqld]
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
@@ -495,7 +504,7 @@ write_env() {
   jobkey=$("$PHP_BIN" -r 'echo base64_encode(random_bytes(32));')
   jwt=$(randpw 64); rt=$(randpw 48); wa=$(randpw 48)
   ADMIN_PASS=$(randpw 20)
-  install -m 0640 -o "$DEPLOY_USER" -g "$WEB_USER" /dev/stdin "$env" <<EOF
+  put_file -m 0640 -o "$DEPLOY_USER" -g "$WEB_USER" "$env" <<EOF
 # WorkSuite Server — written by the WorkSuite installer $INSTALLER_VERSION on $(date -u +%FT%TZ)
 CI_ENVIRONMENT = production
 app.baseURL = 'https://$DOMAIN/'
@@ -536,14 +545,14 @@ license.fingerprintMode = $FP_MODE
 install.admin_email = '$ADMIN_EMAIL'
 install.admin_password = '$ADMIN_PASS'
 EOF
-  install -m 0640 -o root -g "$WEB_USER" /dev/stdin /etc/worksuite/realtime.env <<EOF
+  put_file -m 0640 -o root -g "$WEB_USER" /etc/worksuite/realtime.env <<EOF
 REALTIME_BIND=127.0.0.1
 REALTIME_PORT=8091
 REALTIME_SECRET=$rt
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 EOF
-  install -m 0640 -o root -g "$WEB_USER" /dev/stdin /etc/worksuite/whatsapp.env <<EOF
+  put_file -m 0640 -o root -g "$WEB_USER" /etc/worksuite/whatsapp.env <<EOF
 WA_SERVICE_KEY=$wa
 EOF
   ok "$env (0640, $DEPLOY_USER:$WEB_USER)"
@@ -555,7 +564,7 @@ EOF
 configure_php() {
   step "Configuring PHP-FPM"
   [[ $DRY_RUN -eq 1 ]] && { info "(dry run)"; return 0; }
-  install -m 0644 /dev/stdin "$FPM_CONF_DIR/90-worksuite.ini" <<'EOF'
+  put_file -m 0644 "$FPM_CONF_DIR/90-worksuite.ini" <<'EOF'
 memory_limit = 512M
 upload_max_filesize = 512M
 post_max_size = 520M
@@ -573,7 +582,7 @@ EOF
   fi
   local children=$(( RAM_MB / 80 )); (( children < 10 )) && children=10; (( children > 120 )) && children=120
   install -d "$(dirname "$FPM_SOCK")"
-  install -m 0644 /dev/stdin "$FPM_POOL_DIR/worksuite.conf" <<EOF
+  put_file -m 0644 "$FPM_POOL_DIR/worksuite.conf" <<EOF
 [worksuite]
 user = $WEB_USER
 group = $WEB_USER
@@ -596,7 +605,7 @@ configure_nginx() {
   [[ $DRY_RUN -eq 1 ]] && { info "(dry run)"; return 0; }
   local fastcgi='include fastcgi_params;'
   [[ -f /etc/nginx/snippets/fastcgi-php.conf ]] && fastcgi='include snippets/fastcgi-php.conf;'
-  install -m 0644 /dev/stdin "$NGINX_SITE" <<EOF
+  put_file -m 0644 "$NGINX_SITE" <<EOF
 # WorkSuite — written by the WorkSuite installer
 map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
 server {
@@ -688,7 +697,7 @@ install_services() {
   systemctl daemon-reload
   systemctl enable --now worksuite-updater >>"$LOG" 2>&1 && ok "worksuite-updater agent" || warn "The updater agent did not start (see journalctl -u worksuite-updater)"
   if [[ $REALTIME -eq 1 && -f "$INSTALL_DIR/current/realtime/server.js" ]]; then
-    install -m 0644 /dev/stdin /etc/systemd/system/worksuite-realtime.service <<EOF
+    put_file -m 0644 /etc/systemd/system/worksuite-realtime.service <<EOF
 [Unit]
 Description=WorkSuite realtime gateway
 After=network.target $REDIS_SERVICE.service
@@ -759,14 +768,14 @@ EOF
 install_backup() {
   step "Nightly backups"
   [[ $DRY_RUN -eq 1 ]] && { info "(dry run)"; return 0; }
-  install -m 0600 /dev/stdin /etc/worksuite/backup.cnf <<EOF
+  put_file -m 0600 /etc/worksuite/backup.cnf <<EOF
 [client]
 host=$DB_HOST
 port=$DB_PORT
 user=$DB_USER
 password=$DB_PASS
 EOF
-  install -m 0750 /dev/stdin /usr/local/sbin/worksuite-backup <<EOF
+  put_file -m 0750 /usr/local/sbin/worksuite-backup <<EOF
 #!/usr/bin/env bash
 # Nightly WorkSuite backup: database and configuration. Keeps 14 days.
 set -euo pipefail
@@ -779,7 +788,7 @@ readlink -f $INSTALL_DIR/current > "\$D/release"
 sha256sum "\$D"/* > "\$D/SHA256SUMS"
 find $INSTALL_DIR/backups -maxdepth 1 -name 'nightly-*' -type d -mtime +14 -exec rm -rf {} +
 EOF
-  install -m 0644 /dev/stdin /etc/logrotate.d/worksuite <<EOF
+  put_file -m 0644 /etc/logrotate.d/worksuite <<EOF
 $INSTALL_DIR/shared/writable/logs/*.log /var/log/worksuite-backup.log {
     weekly
     rotate 8
@@ -830,12 +839,14 @@ health_check() {
   else warn "/api/health did not answer — see $INSTALL_DIR/shared/writable/logs"; fi
   for s in "$FPM_SERVICE" nginx "$REDIS_SERVICE" worksuite-updater; do systemctl is-active --quiet "$s" && ok "$s active" || warn "$s is not active"; done
   [[ $EXTERNAL_DB -eq 1 ]] || { systemctl is-active --quiet mariadb && ok "mariadb active" || warn "mariadb is not active"; }
-  spark license:status 2>/dev/null | grep -qE '^effective +ACTIVE' && ok "Licence active" || warn "The licence needs attention: sudo -u $WEB_USER $PHP_BIN $INSTALL_DIR/current/spark license:status"
+  # Read it whole first: with pipefail, grep -q stopping early kills spark with SIGPIPE and the check fails.
+  local lic; lic=$(spark license:status 2>/dev/null || true)
+  grep -qE '^effective +ACTIVE' <<<"$lic" && ok "Licence active" || warn "The licence needs attention: sudo -u $WEB_USER $PHP_BIN $INSTALL_DIR/current/spark license:status"
 }
 
 summary() {
   [[ $DRY_RUN -eq 1 ]] && { printf '\n%sDry run complete — nothing was changed.%s\n' "$B" "$N"; return 0; }
-  install -m 0600 /dev/stdin "$CRED_FILE" <<EOF
+  put_file -m 0600 "$CRED_FILE" <<EOF
 WorkSuite Server — installed $(date)
 Address        : https://$DOMAIN/
 Version        : $REL_VERSION (build $REL_BUILD), ${EDITION^} edition, $CHANNEL channel
