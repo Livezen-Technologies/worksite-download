@@ -18,6 +18,15 @@ Already deployed to download.worksuitecloud.com on 2026-10-13 and 2026-10-14
 WorkSuite Server (#12, #13, #15), the installer (#16), and the two-person
 switch (#11).
 
+### Fixed
+
+- **Server › Licences, Entitlements and Licence risk were hidden from every
+  admin.** Their `license.*` permissions were added to the role matrix after the
+  first seed and never reached the database. Migration `SyncRbacPermissions`
+  adds any permission the matrix has and the database lacks, granted to the
+  roles the matrix names (view: super admin, release manager, support; manage:
+  super admin). Existing grants are untouched.
+
 ### Added
 
 - **WorkSuite Server licences (#12).** Server › Licences generates a key
