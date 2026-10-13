@@ -44,6 +44,7 @@ export const publicApi = {
   confirmSubscription: (token: string) => api.get<{ status: string }>('/subscriptions/confirm', { token }),
   unsubscribe: (token: string) => api.get<{ status: string }>('/subscriptions/unsubscribe', { token }),
   submitBugReport: (body: PublicBugReport) => api.post<BugReportReceipt>('/bugtrace/reports/public', body),
+  offlineActivation: (licenseKey: string, request: unknown) => api.post<Record<string, unknown>>('/server/licenses/offline', { license_key: licenseKey, request }),
   bugReportStatus: (reference: string, token: string) => api.get<BugReportStatus>(`/bugtrace/reports/${encodeURIComponent(reference)}/status`, { token }),
 };
 

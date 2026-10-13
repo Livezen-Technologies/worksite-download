@@ -75,6 +75,17 @@ switch (#11).
   licences, installations whose activation was deactivated, revoked signing keys.
 - **Key rotation drill** documented in `docs/key-rotation.md`.
 
+- **Offline activation (P5).** `POST /api/v1/server/licenses/offline` and the
+  public page `/offline-activation` turn a server's request file (.wsr) and the
+  licence key into a signed licence file (.wsl) for that installation and request,
+  valid until the licence ends or a year. Needs `offline.license.enabled`
+  (Enterprise). The installer's `--offline` mode installs from a copied package
+  and writes the request file at the end.
+- **Installation types (P5).** Activations are PRODUCTION (counted against the
+  licence's servers), STAGING or DR, each with its own limit
+  (`license.staging.max`, `license.dr.max`; placeholders 0/1/2 and 0/0/1). The
+  installer takes `--installation-type` and `--cluster`.
+
 ### Changed
 
 - `GET /api/v1/server/update` and `POST /api/v1/server/downloads/grant` refuse

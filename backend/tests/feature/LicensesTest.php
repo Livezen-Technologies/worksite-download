@@ -343,4 +343,44 @@ final class LicensesTest extends UcTestCase
         $this->assertSame('revocations', $doc['type']);
         $this->assertContains($lic['id'], $doc['revoked_licenses']);
     }
+
+    public function testStagingAndDrServersHaveTheirOwnLimits(): void
+    {
+        $lic = $this->newLicence(['edition' => 'enterprise']); // 1 production, 2 staging, 1 DR (placeholders)
+        [$s] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'p1']);
+        $this->assertSame(201, $s);
+        [$s, $j] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'p2']);
+        $this->assertSame([409, 'LICENSE_ACTIVATION_LIMIT'], [$s, $j['error']['code']]);
+        [$s, $st] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 's1', 'installation_type' => 'staging']);
+        $this->assertSame([201, 'STAGING'], [$s, $st['entitlement']['installation_type']], json_encode($st));
+        [$s] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'd1', 'installation_type' => 'dr']);
+        $this->assertSame(201, $s);
+        [$s] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'd2', 'installation_type' => 'dr']);
+        $this->assertSame(409, $s, 'one DR server');
+
+        $biz = $this->newLicence(); // Business: no DR
+        [$s, $j] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $biz['license_key'], 'fingerprint' => 'bd', 'installation_type' => 'DR']);
+        $this->assertSame(409, $s);
+        $this->assertStringContainsString('does not include', $j['error']['message']);
+    }
+
+    public function testOfflineActivationTurnsARequestFileIntoASignedLicenceFile(): void
+    {
+        $req = ['type' => 'license_request', 'schema' => 1, 'installation_id' => 'inst_airgap01', 'nonce' => 'n0nce-1234567890abcdef', 'hostname' => 'erp.internal', 'fingerprint' => 'fp-air'];
+        $biz = $this->newLicence();
+        [$s, $j] = $this->server('POST', 'api/v1/server/licenses/offline', [], ['license_key' => $biz['license_key'], 'request' => $req]);
+        $this->assertSame([403, 'ENTITLEMENT_REQUIRED'], [$s, $j['error']['code']], 'Enterprise only');
+
+        $ent = $this->newLicence(['edition' => 'enterprise']);
+        [$s, $wsl] = $this->server('POST', 'api/v1/server/licenses/offline', [], ['license_key' => $ent['license_key'], 'request' => json_encode($req)]);
+        $this->assertSame(200, $s, json_encode($wsl));
+        $this->assertTrue($this->verified($wsl));
+        $this->assertSame(['license_offline', 'inst_airgap01', 'n0nce-1234567890abcdef', 'ACTIVE', 'enterprise'], [$wsl['type'], $wsl['installation_id'], $wsl['request_nonce'], $wsl['status'], $wsl['edition']]);
+        $this->assertLessThanOrEqual(time() + 366 * 86400, strtotime($wsl['offline_valid_until']));
+        $this->assertGreaterThan(time() + 300 * 86400, strtotime($wsl['expires_at']), 'the signature stays valid as long as the file');
+        $this->seeInDatabase('license_activations', ['installation_id' => 'inst_airgap01', 'offline' => 1]);
+
+        [$s] = $this->server('POST', 'api/v1/server/licenses/offline', [], ['license_key' => $ent['license_key'], 'request' => ['type' => 'nope']]);
+        $this->assertSame(422, $s);
+    }
 }

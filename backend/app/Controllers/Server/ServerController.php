@@ -141,4 +141,10 @@ class ServerController extends BaseApiController
     {
         return $this->ok((new \App\Services\LicenseService())->revocations());
     }
+
+    /** POST /server/licenses/offline — the .wsl for a .wsr (Enterprise). */
+    public function offlineLicense()
+    {
+        return $this->ok((new \App\Services\LicenseService())->offline($this->body()));
+    }
 }

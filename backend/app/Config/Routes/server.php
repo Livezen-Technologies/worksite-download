@@ -17,6 +17,8 @@ $routes->group('api/v1/server', ['namespace' => 'App\Controllers\Server', 'filte
     $routes->post('licenses/validate', 'ServerController::validateLicense');
     $routes->post('licenses/inspect', 'ServerController::inspectLicense');
     $routes->post('licenses/deactivate', 'ServerController::deactivateLicense');
+    // Offline activation: licence key + request file (.wsr) in, signed licence file (.wsl) out
+    $routes->post('licenses/offline', 'ServerController::offlineLicense');
     // The one-command installer's download, by licence key (IMPL-LIC-01 §7)
     $routes->post('install/package', 'ServerController::installPackage');
     // Signed list of revoked licences, voided installations and revoked signing keys (IMPL-LIC-01 §4.3)
