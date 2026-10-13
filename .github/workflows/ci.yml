@@ -57,6 +57,18 @@ jobs:
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
 
+  linux-repos:
+    name: Linux repositories script
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      # The real tools too, so the one test that needs them runs here (it is skipped where they are missing).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends reprepro createrepo-c
+      - run: bash -n scripts/publish-linux-repos.sh && sh -n scripts/linux-repo-sign.sh
+      - run: node --test scripts/tests/*.test.mjs
+
   sdk:
     name: Bug Trace SDK (${{ matrix.sdk }})
     runs-on: ubuntu-latest

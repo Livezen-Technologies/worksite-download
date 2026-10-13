@@ -13,6 +13,36 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
+### Added
+
+- **WorkSuite APT and DNF repositories (worksuite-desktop#351)** —
+  `scripts/publish-linux-repos.sh` adds WorkSuite Desktop `.deb` builds to a
+  reprepro repository (suites `stable`, `beta`, `dev`; component `main`;
+  `amd64`, `arm64`) and `.rpm` builds to a per-channel createrepo_c
+  repository, signs `Release`/`InRelease` and `repomd.xml` with the WorkSuite
+  repository key (imported from the `WORKSUITE_REPO_GPG_PRIVATE_KEY` secret
+  into a temporary keyring), and publishes the public key at
+  `/apt/worksuite.gpg` and `/rpm/worksuite.gpg` with ready-made source files.
+  Idempotent, with `--dry-run`; a different file under a published name is
+  refused. `scripts/linux-repo-sign.sh` is reprepro's signing hook.
+- nginx serves `/apt/` and `/rpm/` from `/srv/linux-repos/public`: static
+  only, no listings or SPA fallback, package MIME types, packages cached as
+  immutable and indexes and signatures for 1–5 minutes.
+- `docker/linux-repo.Dockerfile` and the `linux-repo` compose profile (a
+  `linux-repos` volume, read-only in `update-web`).
+- **Linux repositories** workflow: after a desktop release is published,
+  fetches its `.deb`/`.rpm` from the Update Center, checks each against the
+  `X-WorkSuite-SHA256` it is served with, updates the tree on the server
+  (packages before indexes) and verifies the served signatures. CI runs the
+  script's tests (`node --test scripts/tests/*.test.mjs`, a throwaway key made
+  at test time).
+- `docs/linux-repositories.md`: offline key creation and rotation, secrets,
+  first-time server setup, verification in clean Ubuntu 22.04/24.04 and
+  Fedora containers, and when and how to turn on the desktop switch
+  (`WORKSUITE_LINUX_REPO=1`, off until the repository is live).
+
 ## [0.5.0] - 2026-10-12
 
 Deployed to download.worksuitecloud.com at 21:20 UTC on 2026-10-12 from
@@ -383,7 +413,8 @@ B1 Bug Trace core).
   never executed; storage credentials are resolved from the secret service
   by reference only; telemetry stores no IP addresses or user identities.
 
-[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Livezen-Technologies/worksite-download/compare/v0.2.0...v0.3.0
