@@ -208,4 +208,92 @@ final class LicensesTest extends UcTestCase
         [$s] = $this->api($viewer, 'PUT', 'api/v1/admin/entitlements/editions/free', ['values' => ['crm.enabled' => false]]);
         $this->assertSame(403, $s);
     }
+
+    /** A signed (WS-HMAC-SHA256) server call. */
+    private function signed(array $act, string $method, string $uri, array $body, ?int $ts = null, ?string $nonce = null): array
+    {
+        $json  = json_encode($body);
+        $ts  ??= time();
+        $nonce ??= bin2hex(random_bytes(12));
+        $sig   = \App\Services\RequestSignature::sign($act['request_secret'], $method, '/' . $uri, $ts, $nonce, $json);
+        $this->setCookie('uc_session', null);
+        $res = $this->withHeaders(['Authorization' => "WS-HMAC-SHA256 inst={$act['installation_id']}, ts={$ts}, nonce={$nonce}, sig={$sig}", 'Content-Type' => 'application/json'])
+            ->withBody($json)->call($method, $uri);
+
+        return [$res->response()->getStatusCode(), $this->json($res)];
+    }
+
+    private static function fp(string $seed): array
+    {
+        return array_map(static fn ($k) => hash('sha256', $seed . $k), ['uuid' => 'u', 'secret' => 's', 'machine' => 'm', 'dmi' => 'd', 'cloud' => 'c', 'disk' => 'k']);
+    }
+
+    public function testSignedRequestsReplaysAndClockSkew(): void
+    {
+        $lic = $this->newLicence();
+        [, $act] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-h']);
+        $this->assertStringStartsWith('wsrs_', $act['request_secret']);
+        $this->dontSeeInDatabase('server_installations', ['request_secret_ref' => $act['request_secret']]);
+
+        [$s, $val] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', ['version' => '3.1.0'], null, 'nonce-aaaaaaaaaaaaaaaa');
+        $this->assertSame([200, 'ACTIVE'], [$s, $val['status']], json_encode($val));
+        [$s, $j] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', ['version' => '3.1.0'], null, 'nonce-aaaaaaaaaaaaaaaa');
+        $this->assertSame([401, 'REQUEST_REPLAYED'], [$s, $j['error']['code']]);
+        [$s, $j] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', [], time() - 900);
+        $this->assertSame([401, 'REQUEST_EXPIRED'], [$s, $j['error']['code']]);
+        $forged = $act;
+        $forged['request_secret'] = 'wsrs_' . str_repeat('x', 43);
+        [$s, $j] = $this->signed($forged, 'POST', 'api/v1/server/licenses/validate', []);
+        $this->assertSame([401, 'REQUEST_SIGNATURE_INVALID'], [$s, $j['error']['code']]);
+    }
+
+    public function testFingerprintDriftRequiresATransferAndReactivatingTransfers(): void
+    {
+        $lic = $this->newLicence();
+        [, $act] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-t', 'fingerprint_components' => self::fp('A')]);
+
+        // A new disk only: 95, still the same server.
+        $drift = self::fp('A');
+        $drift['disk'] = hash('sha256', 'new disk');
+        [, $val] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', ['fingerprint_components' => $drift]);
+        $this->assertSame(['ACTIVE', 95], [$val['status'], $val['fingerprint_confidence']]);
+
+        // A copy of the installation on other hardware with its own secret: only the installation id matches, 35 of 100.
+        $clone = self::fp('B');
+        $clone['uuid'] = self::fp('A')['uuid'];
+        [, $val] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', ['fingerprint_components' => $clone]);
+        $this->assertSame(['TRANSFER_REQUIRED', 35, false], [$val['status'], $val['fingerprint_confidence'], $val['update_eligible']]);
+        $this->seeInDatabase('audit_logs', ['action' => 'license.transfer_required']);
+
+        // Activating again with the key on the new server registers it: the controlled transfer.
+        [$s, $re] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'installation_id' => $act['installation_id'], 'fingerprint_components' => $clone]);
+        $this->assertSame([200, 'ACTIVE'], [$s, $re['entitlement']['status']], json_encode($re));
+        $this->seeInDatabase('audit_logs', ['action' => 'license.transferred']);
+        // The old request secret no longer signs.
+        [$s] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', []);
+        $this->assertSame(401, $s);
+        [, $val] = $this->signed($re, 'POST', 'api/v1/server/licenses/validate', ['fingerprint_components' => $clone]);
+        $this->assertSame(['ACTIVE', 100], [$val['status'], $val['fingerprint_confidence']]);
+    }
+
+    public function testAServerCanGiveItsSlotBack(): void
+    {
+        $lic = $this->newLicence();
+        [, $act] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-d']);
+        [$s, $j] = $this->signed($act, 'POST', 'api/v1/server/licenses/deactivate', ['reason' => 'Server retired']);
+        $this->assertSame([200, true], [$s, $j['deactivated']], json_encode($j));
+        [$s] = $this->signed($act, 'POST', 'api/v1/server/licenses/validate', []);
+        $this->assertSame(401, $s, 'its credentials are gone');
+        [$s] = $this->server('POST', 'api/v1/server/licenses/activate', [], ['license_key' => $lic['license_key'], 'fingerprint' => 'fp-other']);
+        $this->assertSame(201, $s, 'the slot is free');
+    }
+
+    public function testConfidenceScoring(): void
+    {
+        $a = self::fp('A');
+        $this->assertSame(100, \App\Services\LicenseService::confidence($a, $a));
+        $this->assertSame(100, \App\Services\LicenseService::confidence([], $a), 'nothing to compare is not a mismatch');
+        $only = ['uuid' => $a['uuid'], 'secret' => $a['secret']];
+        $this->assertSame(100, \App\Services\LicenseService::confidence($a, $only), 'components the server could not read are not counted');
+    }
 }
