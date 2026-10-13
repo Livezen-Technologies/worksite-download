@@ -285,7 +285,8 @@ install_packages_debian() {
       apt-transport-https git sudo tzdata fail2ban
   local cand; cand=$(apt-cache policy "php$PHP_V-fpm" 2>/dev/null | awk '/Candidate/{print $2}')
   if [[ -z "$cand" || "$cand" == "(none)" ]]; then
-    if [[ "$OS_ID" == ubuntu ]]; then run apt-get install -y software-properties-common; run add-apt-repository -y ppa:ondrej/php
+    # Ubuntu up to 24.04: the ondrej PPA. From 26.04 the PPA has no builds; they moved to packages.sury.org/php.
+    if [[ "$OS_ID" == ubuntu && "$OS_VER" -lt 26 ]]; then run apt-get install -y software-properties-common; run add-apt-repository -y ppa:ondrej/php
     else
       run curl -fsSL https://packages.sury.org/php/apt.gpg -o /usr/share/keyrings/sury-php.gpg
       [[ $DRY_RUN -eq 1 ]] || echo "deb [signed-by=/usr/share/keyrings/sury-php.gpg] https://packages.sury.org/php/ $OS_CODENAME main" >/etc/apt/sources.list.d/sury-php.list

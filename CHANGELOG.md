@@ -28,6 +28,12 @@ switch (#11).
 
 ### Fixed
 
+- **The installer on Ubuntu 26.04.** The ondrej PPA has no builds for 26.04
+  (they moved to packages.sury.org/php), so `apt-get update` failed at step 4.
+  From Ubuntu 26 the installer adds the sury repository instead. Found by the
+  staging install test of 3.1.0+2830 on a 26.04 VM (still an untested OS:
+  `--skip-precheck`).
+
 - **Server › Licences, Entitlements and Licence risk were hidden from every
   admin.** Their `license.*` permissions were added to the role matrix after the
   first seed and never reached the database. Migration `SyncRbacPermissions`
