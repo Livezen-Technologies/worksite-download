@@ -203,6 +203,20 @@ final class ServerAutoUpdateTest extends UcTestCase
         $this->assertSame('mode', $j['policy']['locked_fields'][0]['field']);
     }
 
+    public function testTwoPersonRuleSwitchLetsTheQaApproverPublish(): void
+    {
+        $qaAndRm = $this->makeUser(['qa', 'release_manager'], 'qa-rm-solo@livezen.lk');
+        $id      = $this->serverReleaseInTesting('3.4.1', 34013, 'PATCH', $qaAndRm);
+        config('UpdateCenter')->twoPersonRuleDisabled = true;
+
+        try {
+            [$s, $j] = $this->api($qaAndRm, 'POST', "api/v1/admin/server/releases/{$id}/publish", ['confirm_version' => '3.4.1', 'reason' => 'One-person release']);
+            $this->assertSame([200, 'PUBLISHED'], [$s, $j['status'] ?? null], json_encode($j));
+        } finally {
+            config('UpdateCenter')->twoPersonRuleDisabled = false;
+        }
+    }
+
     public function testPublishNeedsTwoPeopleMfaAndTypedVersionAndWritesSignedChecksums(): void
     {
         $qaAndRm = $this->makeUser(['qa', 'release_manager'], 'qa-rm@livezen.lk');

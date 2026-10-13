@@ -267,7 +267,7 @@ class ReleaseService
         if ($channel['code'] === 'STABLE' && $qa === []) {
             throw new ApiException('QA_APPROVAL_MISSING', 'QA must pass before Release Manager approval', 409);
         }
-        if ($this->isServer($release) && in_array($uid, $this->qaApproverIds($release), true)) {
+        if ($this->isServer($release) && ! config('UpdateCenter')->twoPersonRuleDisabled && in_array($uid, $this->qaApproverIds($release), true)) {
             // WS-CORE-SYSUPDATE FR-DL-REL-04: QA approves, a different person publishes — on every channel.
             throw new ApiException('SOD_VIOLATION', 'The QA approver cannot also approve or publish this server release', 403);
         }
@@ -329,7 +329,7 @@ class ReleaseService
         if (! $system && $this->sodApplies($release) && $uid !== null && in_array($uid, $this->uploaderIds($release), true)) {
             throw new ApiException('SOD_VIOLATION', 'The Release Manager who publishes cannot be the uploader', 403);
         }
-        if (! $system && $uid !== null && $this->isServer($release) && in_array($uid, $this->qaApproverIds($release), true)) {
+        if (! $system && $uid !== null && $this->isServer($release) && ! config('UpdateCenter')->twoPersonRuleDisabled && in_array($uid, $this->qaApproverIds($release), true)) {
             throw new ApiException('SOD_VIOLATION', 'The QA approver cannot also publish this server release', 403);
         }
         if ($scheduleAt !== null && $scheduleAt !== '') {
@@ -610,6 +610,9 @@ class ReleaseService
     private function sodApplies(array $release): bool
     {
         $cfg = config('UpdateCenter');
+        if ($cfg->twoPersonRuleDisabled) {
+            return false; // two-person rule switched off (UpdateCenter::$twoPersonRuleDisabled)
+        }
 
         return ($cfg->enforceSod || $cfg->isProduction()) && Catalog::channelById((int) $release['channel_id'])['code'] === 'STABLE';
     }
