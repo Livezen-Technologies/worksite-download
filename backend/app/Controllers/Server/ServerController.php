@@ -129,4 +129,10 @@ class ServerController extends BaseApiController
     {
         return $this->ok((new \App\Services\LicenseService())->deactivateSelf($this->keyInstallation(), $this->body()));
     }
+
+    /** POST /server/install/package — licence key in; the edition's newest package, a short-lived URL, the signed manifest. */
+    public function installPackage()
+    {
+        return $this->ok((new \App\Services\LicenseService())->installPackage($this->body()));
+    }
 }
