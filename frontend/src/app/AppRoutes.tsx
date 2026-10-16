@@ -12,6 +12,8 @@ import { RequirementsPage } from '@/pages/public/RequirementsPage';
 import { ChannelsPage } from '@/pages/public/ChannelsPage';
 import { OsPage } from '@/pages/public/OsPage';
 import { SubscriptionPage } from '@/pages/public/SubscriptionPage';
+import { BugReportPage, BugReportStatusPage } from '@/pages/public/BugReportPage';
+import { OfflineActivationPage } from '@/pages/public/OfflineActivationPage';
 import { NotFoundBlock } from '@/pages/public/common';
 
 // Admin and portal are separate chunks: public pages stay light (LCP < 2 s).
@@ -33,6 +35,9 @@ export function PublicRoutes() {
       <Route path="os" element={<OsPage />} />
       <Route path="subscriptions/confirm" element={<SubscriptionPage mode="confirm" />} />
       <Route path="subscriptions/unsubscribe" element={<SubscriptionPage mode="unsubscribe" />} />
+      <Route path="report-a-problem" element={<BugReportPage />} />
+      <Route path="offline-activation" element={<OfflineActivationPage />} />
+      <Route path="report-a-problem/status" element={<BugReportStatusPage />} />
       <Route path="*" element={<NotFoundBlock />} />
     </Route>
   );

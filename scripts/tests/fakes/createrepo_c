@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# A stand-in for createrepo_c in scripts/tests: repodata/repomd.xml listing the packages.
+set -euo pipefail
+dir=${!#}
+echo "createrepo_c $*" >>"${FAKE_LOG:-/dev/null}"
+mkdir -p "$dir/repodata"
+{ echo '<?xml version="1.0" encoding="UTF-8"?>'; echo '<repomd>'; for p in "$dir"/packages/*.rpm; do [ -e "$p" ] && echo "  <package>$(basename "$p")</package>"; done; echo '</repomd>'; } >"$dir/repodata/repomd.xml"

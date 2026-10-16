@@ -110,7 +110,7 @@ final class ServerPackageValidator
         if ((int) $pkg['build'] !== (int) $expect['build']) {
             $mismatch[] = "build {$pkg['build']} ≠ {$expect['build']}";
         }
-        if (strtoupper((string) $pkg['edition']) !== strtoupper($expect['edition'])) {
+        if (self::edition((string) $pkg['edition']) !== self::edition($expect['edition'])) {
             $mismatch[] = "edition {$pkg['edition']} ≠ " . strtolower($expect['edition']);
         }
         if (isset($pkg['channel']) && strtoupper((string) $pkg['channel']) !== strtoupper($expect['channel'])) {
@@ -163,7 +163,11 @@ final class ServerPackageValidator
         foreach (array_slice($unlisted, 0, 5) as $u) {
             $problems[] = "unlisted {$u}";
         }
-        if (isset($pkg['files_digest']) && $pkg['files_digest'] !== 'sha256:' . hash('sha256', $list)) {
+        // files_digest ties files.sha256 to the signed manifest (through package_json_sha256), which is what lets an
+        // installed server prove every file against the release key (CoreIntegrityService). Required.
+        if (! isset($pkg['files_digest'])) {
+            $problems[] = 'worksuite-package.json has no files_digest ("sha256:" + SHA-256 of files.sha256)';
+        } elseif ($pkg['files_digest'] !== 'sha256:' . hash('sha256', $list)) {
             $problems[] = 'files_digest does not match files.sha256';
         }
         $add('file_hashes', $problems === [], $problems === [] ? count($expected) . ' files verified' : implode('; ', array_slice($problems, 0, 5)));
@@ -191,7 +195,7 @@ final class ServerPackageValidator
         }
 
         // 7. Edition content (paid-module code never shipped in lower editions).
-        $edition = strtoupper((string) $pkg['edition']);
+        $edition = self::edition((string) $pkg['edition']);
         $scope   = (string) ($pkg['scope'] ?? 'full');
         $allowed = [];
         if ($edition === 'ALL') {
@@ -225,6 +229,14 @@ final class ServerPackageValidator
         return ['ok' => true, 'reject_code' => null, 'checks' => $checks, 'package_json' => $pkg, 'files' => count($expected)];
     }
 
+    /** Package edition code; "professional" is the product name of the FREE edition. */
+    public static function edition(string $e): string
+    {
+        $e = strtoupper(trim($e));
+
+        return $e === 'PROFESSIONAL' ? 'FREE' : $e;
+    }
+
     /** @return list<string> */
     public static function schemaErrors(array $p): array
     {
@@ -241,8 +253,8 @@ final class ServerPackageValidator
         if (! is_int($p['build'] ?? null) || $p['build'] <= 0) {
             $e[] = 'build must be a positive integer';
         }
-        if (! in_array(strtolower((string) ($p['edition'] ?? '')), ['free', 'business', 'enterprise', 'all'], true)) {
-            $e[] = 'edition must be free|business|enterprise|all';
+        if (! in_array(strtolower((string) ($p['edition'] ?? '')), ['free', 'professional', 'business', 'enterprise', 'all'], true)) {
+            $e[] = 'edition must be professional|free|business|enterprise|all';
         }
         if (! in_array($p['scope'] ?? 'full', ['full', 'core-patch'], true)) {
             $e[] = 'scope must be full|core-patch';

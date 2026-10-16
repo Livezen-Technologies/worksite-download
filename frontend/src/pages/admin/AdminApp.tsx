@@ -78,7 +78,14 @@ export default function AdminApp() {
           <Route path="content/download-pages" element={<Guard perm="content.manage"><P.DownloadPagesContent /></Guard>} />
           <Route path="devices/versions" element={<Guard perm="devices.view"><P.DeviceVersions /></Guard>} />
           <Route path="devices/update-status" element={<Guard perm="devices.view"><P.UpdateStatus /></Guard>} />
+          <Route path="server/releases" element={<Guard perm="release.view"><P.ServerReleases /></Guard>} />
+          <Route path="server/releases/new" element={<Guard perm="release.create"><P.NewServerRelease /></Guard>} />
+          <Route path="server/releases/:id" element={<Guard perm="release.view"><P.NewServerRelease /></Guard>} />
+          <Route path="server/releases/:id/rollout" element={<Guard perm={['rollout.view', 'release.view']}><P.ServerRollout /></Guard>} />
           <Route path="server/installations" element={<Guard perm="installations.view"><P.Installations /></Guard>} />
+          <Route path="server/licenses" element={<Guard perm="license.view"><P.Licenses /></Guard>} />
+          <Route path="server/entitlements" element={<Guard perm="license.view"><P.Entitlements /></Guard>} />
+          <Route path="server/license-risk" element={<Guard perm="license.view"><P.LicenseRisk /></Guard>} />
           <Route path="server/fleet" element={<Guard perm={['fleet.manage', 'installations.view']}><P.ManagedFleet /></Guard>} />
           <Route path="bugtrace/issues" element={<Guard perm="bugtrace.view"><P.IssuesPage /></Guard>} />
           <Route path="bugtrace/issues/:id" element={<Guard perm="bugtrace.view"><P.IssueDetailPage /></Guard>} />

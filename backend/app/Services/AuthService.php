@@ -142,7 +142,7 @@ class AuthService
         }
         $db->table('users')->where('id', $user['id'])->update(['failed_logins' => 0, 'locked_until' => null]);
 
-        $mfaRequired = (bool) $user['mfa_enabled'];
+        $mfaRequired = (bool) $user['mfa_enabled'] && ! config('UpdateCenter')->mfaDisabled;
         $session     = $this->createSession((int) $user['id'], $ip, $ua, $mfaRequired);
         if (! $mfaRequired) {
             $this->completeLogin($user);
@@ -383,13 +383,21 @@ class AuthService
         if (! is_string($challenge) || $cred === null) {
             throw new ApiException('PASSKEY_INVALID', 'Unknown passkey or expired challenge', 401);
         }
+        $wa = $this->webauthn();
         try {
-            $this->webauthn()->processGet(Base64Url::decode($body['clientDataJSON'] ?? ''), Base64Url::decode($body['authenticatorData'] ?? ''), Base64Url::decode($body['signature'] ?? ''), $cred['public_key'], Base64Url::decode($challenge), (int) $cred['sign_count'], true);
+            $wa->processGet(Base64Url::decode($body['clientDataJSON'] ?? ''), Base64Url::decode($body['authenticatorData'] ?? ''), Base64Url::decode($body['signature'] ?? ''), $cred['public_key'], Base64Url::decode($challenge), (int) $cred['sign_count'], true);
         } catch (\Throwable $e) {
+            log_message('warning', 'Passkey assertion failed for credential {id}: {why}', ['id' => $cred['id'], 'why' => $e->getMessage()]);
             throw new ApiException('PASSKEY_INVALID', 'Passkey verification failed', 401);
         }
         cache()->delete('wa_get_' . $user['id']);
-        db_connect()->table('webauthn_credentials')->where('id', $cred['id'])->update(['last_used_at' => gmdate('Y-m-d H:i:s'), 'sign_count' => (int) $cred['sign_count'] + 1]);
+        // The authenticator's own counter, not ours plus one: synced passkeys (iCloud
+        // Keychain, Google Password Manager) always report 0, and storing 1 made the
+        // library refuse their second sign-in as a cloned key.
+        db_connect()->table('webauthn_credentials')->where('id', $cred['id'])->update([
+            'last_used_at' => gmdate('Y-m-d H:i:s'),
+            'sign_count'   => (int) ($wa->getSignatureCounter() ?? 0),
+        ]);
         $wasPending = (bool) ($ctx->session['mfa_pending'] ?? false);
         $this->markMfa($ctx);
         if ($wasPending) {

@@ -11,6 +11,7 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Desktop'], static func
     $routes->get('releases/(:segment)/manifest', 'DesktopController::releaseManifest/$1', ['filter' => ['auth:optional', 'rl:manifest']]);
     $routes->get('releases/(:segment)/state', 'DesktopController::releaseState/$1', ['filter' => 'rl:manifest']);
     $routes->get('apps/(:segment)/channels/(:segment)/manifest', 'DesktopController::channelManifest/$1/$2', ['filter' => ['auth:optional', 'rl:manifest']]);
+    $routes->get('apps/(:segment)/channels/(:segment)/appcast.xml', 'DesktopController::appcast/$1/$2', ['filter' => ['auth:optional', 'rl:manifest']]);
     $routes->get('catalog/changes', 'DesktopController::catalogChanges', ['filter' => ['auth:client', 'rl:admin']]);
     $routes->get('catalog/mirror/(:segment)/(:segment)', 'DesktopController::mirror/$1/$2', ['filter' => ['auth:client', 'rl:admin']]);
 });

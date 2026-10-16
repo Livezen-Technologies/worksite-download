@@ -175,4 +175,18 @@ final class ReportsTest extends BugTraceTestCase
         $this->assertNull($row['contact_email_enc'], 'no consent → no e-mail kept');
         $this->assertSame('lk.worksuite.desktop', $row['app']);
     }
+
+    public function testPublicReportRoutesToTheChosenPlatformProject(): void
+    {
+        $db       = db_connect();
+        $projects = array_column($db->table('bt_projects')->get()->getResultArray(), 'id', 'platform');
+        foreach (['mobile' => 'Push notifications never arrive', 'web' => 'Inbox page is blank', 'desktop' => 'App freezes on start'] as $platform => $title) {
+            $res = $this->h([], 'json')->post('api/v1/bugtrace/reports/public', ['app' => 'desktop', 'platform' => $platform, 'title' => $title, 'captcha_token' => 'dev-ok']);
+            $this->assertSame(201, $res->response()->getStatusCode(), (string) $res->response()->getBody());
+            $row = $db->table('bt_reports')->where('title', $title)->get()->getRowArray();
+            $this->assertSame((int) $projects[$platform], (int) $row['project_id'], $platform);
+            $this->assertSame($platform, json_decode($row['context'], true)['platform']);
+        }
+        $this->h([], 'json')->post('api/v1/bugtrace/reports/public', ['app' => 'desktop', 'platform' => 'toaster', 'title' => 'x', 'captcha_token' => 'dev-ok'])->assertStatus(422);
+    }
 }

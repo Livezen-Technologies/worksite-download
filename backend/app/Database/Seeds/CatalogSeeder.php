@@ -2,6 +2,7 @@
 
 namespace App\Database\Seeds;
 
+use App\Database\ServerChannels;
 use App\Libraries\Ulid;
 use CodeIgniter\Database\Seeder;
 
@@ -50,6 +51,8 @@ class CatalogSeeder extends Seeder
         ];
         $apps = [
             ['WorkSuite Desktop', 'desktop', 'lk.worksuite.desktop', 'DESKTOP', 'The WorkSuite desktop app for Windows, macOS and Linux — Mail, Chat, Meet, Files and your business apps in one window, with offline support.', $desktopPlatforms, 1],
+            // Updates on macOS through Sparkle, from GET /api/v1/apps/office/channels/{channel}/appcast.xml (SparkleAppcastService).
+            ['WorkSuite Office', 'office', 'lk.worksuite.office', 'DESKTOP', 'Documents, spreadsheets and presentations on your computer, with your WorkSuite Drive files on its home screen.', [['macos', 'arm64', ['dmg', 'zip'], 1, 'dmg', '11.0'], ['macos', 'x64', ['dmg', 'zip'], 0, 'dmg', null], ['windows', 'x64', ['exe', 'zip'], 0, 'exe', null], ['linux', 'x64', ['deb', 'rpm'], 0, 'deb', null]], 7],
             ['WorkSuite Installer', 'installer', 'lk.worksuite.installer', 'DESKTOP', 'Guided installer for self-hosted WorkSuite servers.', [['linux', 'x64', ['appimage', 'deb', 'rpm'], 1, 'deb', null], ['windows', 'x64', ['exe'], 0, 'exe', null]], 2],
             ['WorkSuite Quick Support', 'quick-support', 'lk.worksuite.quicksupport', 'DESKTOP', 'Let Livezen support connect to your computer securely for a single session.', [['windows', 'x64', ['exe'], 1, 'exe', null], ['macos', 'arm64', ['dmg'], 1, 'dmg', null], ['macos', 'x64', ['dmg'], 0, 'dmg', null]], 3],
             ['WorkSuite Sync Agent', 'sync-agent', 'lk.worksuite.syncagent', 'DESKTOP', 'Background file sync for WorkSuite Drive.', [['windows', 'x64', ['msi'], 1, 'msi', null], ['macos', 'arm64', ['pkg'], 1, 'pkg', null], ['linux', 'x64', ['deb', 'rpm'], 1, 'deb', null]], 4],
@@ -103,6 +106,8 @@ class CatalogSeeder extends Seeder
             }
         }
 
+        ServerChannels::ensureLts($this->db);
+
         if ($this->db->table('storage_providers')->countAllResults() === 0) {
             $this->db->table('storage_providers')->insert([
                 'name' => 'Local (dev)', 'kind' => 'LOCAL', 'bucket' => 'worksuite-releases', 'region' => null, 'endpoint' => null,
@@ -131,7 +136,7 @@ class CatalogSeeder extends Seeder
             return ['os' => ['64-bit x86 (amd64) or ARM64 (arm64) PC with UEFI', '4 GB RAM (8 GB recommended)', '40 GB free disk space', 'Internet access for signed automatic updates']];
         }
         if ($kind === 'SERVER') {
-            return ['server' => ['PHP 8.2 – 8.4 with intl, sodium, imap, mbstring, gd', 'MariaDB 10.6+ or MySQL 8.0+', 'Redis 7', '4 vCPU, 8 GB RAM, 20 GB free disk', 'Linux (Ubuntu 22.04/24.04, Debian 12, RHEL 9)']];
+            return ['server' => \App\Database\ServerInstallGuide::REQUIREMENTS];
         }
 
         return [
@@ -147,7 +152,7 @@ class CatalogSeeder extends Seeder
             return ['os' => "Download the **.iso** for your architecture, check it against the published **SHA-256**, write it to a USB stick (`sudo dd if=worksuite-os-*.iso of=/dev/sdX bs=4M status=progress`) and boot from it. Installed systems update themselves from this site."];
         }
         if ($kind === 'SERVER') {
-            return ['server' => "Existing installations update from **Admin Center › System › Updates**. For air-gapped servers, download the edition ZIP and its signed release manifest, then upload both in **System › Updates › Manual package**."];
+            return ['server' => \App\Database\ServerInstallGuide::GUIDE];
         }
 
         return [

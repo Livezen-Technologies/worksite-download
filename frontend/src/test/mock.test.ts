@@ -43,6 +43,14 @@ describe('mock API (contract shapes + critical-action rules)', () => {
     expect(() => call('POST', '/admin/releases/rel_desktop_270/withdraw', { reason: 'x', confirm_version: '2.7' }, { 'x-mfa-token': '123456' })).toThrow(/Type the version/);
   });
 
+  it('accepts anonymous public bug reports without CSRF and serves their status by token', () => {
+    const r = handleMock({ method: 'POST', path: '/bugtrace/reports/public', query: new URLSearchParams(), headers: {}, body: { app: 'desktop', title: 'Installer fails', captcha_token: 'x' } });
+    expect(r.status).toBe(201);
+    const { reference, status_token } = r.body as any;
+    expect(call('GET', `/bugtrace/reports/${reference}/status?token=${status_token}`).status).toBe('received');
+    expect(() => call('GET', `/bugtrace/reports/${reference}/status?token=nope`)).toThrow(/not found/);
+  });
+
   it('rejects mutations without the CSRF header', () => {
     expect(() => handleMock({ method: 'POST', path: '/admin/releases/rel_desktop_271/approve', query: new URLSearchParams(), headers: {}, body: {} })).toThrow(/session token/);
   });
@@ -55,4 +63,20 @@ describe('mock API (contract shapes + critical-action rules)', () => {
     expect(draft.checklist.passed).toBe(false);
     expect(draft.allowed_actions).toContain('upload');
   });
+
+  it('serves the server release console (DL-1…DL-4) in mock mode', () => {
+    const list = call('GET', '/admin/server/releases?channel=STABLE');
+    expect(list.kpis.linked).toBeGreaterThan(0);
+    expect(list.data.every((r: any) => r.channel === 'STABLE' && r.severity && r.ring_summary)).toBe(true);
+    const created = call('POST', '/admin/server/releases', { version: '3.5.0', build: 35001, channel: 'STABLE', severity: 'SECURITY', editions: ['BUSINESS'], migrations_reversible: true, notes: '## Security\n- Fix' });
+    expect(created.severity).toBe('SECURITY');
+    expect(call('GET', `/admin/releases/${created.id}`).packages.map((p: any) => p.edition)).toEqual(['BUSINESS']);
+    const published = list.data.find((r: any) => r.status === 'PUBLISHED');
+    const rollout = call('GET', `/admin/server/releases/${published.id}/rollout`);
+    expect(rollout.rings).toHaveLength(4);
+    expect(call('POST', `/admin/server/releases/${published.id}/rollout/pause`, { reason: 'x' }, { 'x-mfa-token': '123456' }).pause.kind).toBe('MANUAL');
+    expect(call('GET', '/admin/installations/stats').segments.all).toBeGreaterThan(0);
+    expect(call('GET', '/admin/installations?segment=below_minimum').data.every((i: any) => i.below_minimum)).toBe(true);
+  });
 });
+

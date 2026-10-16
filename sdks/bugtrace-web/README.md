@@ -19,7 +19,7 @@ bugtrace.init({
   key: 'pk_web_prod_…',                    // per-project public ingest key
   release: import.meta.env.VITE_RELEASE,   // "3.4.0+34012" — must match the Update Center release
   tpt: () => auth.tenantPolicyToken,       // Tenant Policy Token (carries the `bugtrace` policy claim)
-  endpoint: 'https://updates.worksuitecloud.com',
+  endpoint: 'https://download.worksuitecloud.com',
   installationRef: tenant.installationRef, // HMAC-pseudonymised by the tenant
   userRef: auth.userRefHmac,               // "u_hmac:…" — never a real user id or e-mail
   edition: tenant.edition,
@@ -52,7 +52,7 @@ Vite: set `build.sourcemap = 'hidden'`. CI then uploads the maps per release:
 ```sh
 curl -fsS -X POST -H "Authorization: Bearer $UC_CI_TOKEN" -H 'Content-Type: application/json' \
   --data-binary @dist/assets/mail-8c1.js.map \
-  "https://updates.worksuitecloud.com/api/v1/admin/bugtrace/symbols?release_id=$REL_ID&file_name=mail-8c1.js.map&artifact=assets/mail-8c1.js"
+  "https://download.worksuitecloud.com/api/v1/admin/bugtrace/symbols?release_id=$REL_ID&file_name=mail-8c1.js.map&artifact=assets/mail-8c1.js"
 ```
 
 ## What is captured

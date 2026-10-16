@@ -140,8 +140,8 @@ class AdministrationController extends BaseApiController
     {
         $b    = $this->body();
         $kind = strtoupper((string) ($b['kind'] ?? 'CI'));
-        if (! in_array($kind, ['CI', 'TENANT', 'INTEGRATION'], true)) {
-            throw ApiException::validation(['kind' => 'CI, TENANT or INTEGRATION']);
+        if (! in_array($kind, ['CI', 'TENANT', 'INTEGRATION', 'SERVICE'], true)) {
+            throw ApiException::validation(['kind' => 'CI, TENANT, INTEGRATION or SERVICE']);
         }
         $perms    = array_values((array) ($b['permissions'] ?? ($kind === 'CI' ? Rbac::CI_DEFAULT : ['release.view'])));
         $tenantId = null;
@@ -413,7 +413,8 @@ class AdministrationController extends BaseApiController
             'session_idle_s'         => $cfg->sessionIdleSeconds,
             'session_absolute_s'     => $cfg->sessionAbsoluteSeconds,
             'step_up_s'              => $cfg->stepUpSeconds,
-            'require_staff_mfa'      => $cfg->requireStaffMfa || $cfg->isProduction(),
+            'require_staff_mfa'      => ! $cfg->mfaDisabled && ($cfg->requireStaffMfa || $cfg->isProduction()),
+            'mfa_disabled'           => $cfg->mfaDisabled,
             'require_attestation'    => $cfg->requireAttestation || $cfg->isProduction(),
             'scanner'                => $cfg->scanner,
             'signature_verifier'     => $cfg->signatureVerifier,

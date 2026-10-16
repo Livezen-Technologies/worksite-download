@@ -12,7 +12,7 @@ use CodeIgniter\CLI\CLI;
 
 /**
  * update-scheduler container (§3.5): scheduled publishes, rollout evaluation,
- * campaign reminders, fleet auto-pause, health & storage probes, analytics
+ * campaign reminders, fleet auto-pause, server ring gate, health & storage probes, analytics
  * roll-ups, retention and cleanup. Run every minute (loop or cron).
  */
 class Scheduler extends BaseCommand
@@ -28,6 +28,7 @@ class Scheduler extends BaseCommand
         'rollouts'          => 60,
         'server_reminders'  => 60,
         'fleet'             => 5,
+        'server_rings'      => 5,
         'health'            => 5,
         'storage_probe'     => 60,
         'analytics'         => 60,
@@ -93,6 +94,12 @@ class Scheduler extends BaseCommand
     private function taskFleet(): array
     {
         return (new ServerUpdateService())->evaluateFleet();
+    }
+
+    /** Server ring rollouts: health gate auto-pause and ring opening (FR-DL-RING-01/02). */
+    private function taskServerRings(): array
+    {
+        return (new \App\Services\ServerRingService())->evaluateAll();
     }
 
     private function taskHealth(): array

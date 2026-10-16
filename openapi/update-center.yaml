@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     Release distribution, signed manifests, Desktop Update API, telemetry, server
-    edition updates and administration for updates.worksuitecloud.com
+    edition updates and administration for download.worksuitecloud.com
     (WS-UPDATE-CENTER-SRS-001 §10, §17.10, §18.12).
 
     Errors always use `{ "error": { "code", "message", "details" } }` (§10.8).
@@ -12,8 +12,8 @@ info:
     Ed25519 over the canonical JSON (sorted keys, no whitespace) of the object
     without `signature`.
 servers:
-  - url: https://updates.worksuitecloud.com
-  - url: https://updates-staging.worksuitecloud.com
+  - url: https://download.worksuitecloud.com
+  - url: https://download-staging.worksuitecloud.com
 tags:
   - name: Public
   - name: Desktop
@@ -30,6 +30,7 @@ components:
     apiClient: { type: http, scheme: bearer, description: "`<client_id>.<secret>` for CI / tenant API clients." }
     tenantPolicy: { type: apiKey, in: header, name: X-WorkSuite-Tenant-Policy, description: "Tenant Policy Token (base64url JSON, §2.4)." }
     license: { type: apiKey, in: header, name: Authorization, description: "`License <token>` — installation/device license token (never raw keys)." }
+    installationKey: { type: apiKey, in: header, name: Authorization, description: "`Installation <key>` — installation key issued by POST /api/v1/server/installations/register (WS-CORE-SYSUPDATE §10). Only its SHA-256 is stored; re-registering replaces it." }
   parameters:
     mfa: { name: X-MFA-Token, in: header, required: false, schema: { type: string }, description: "TOTP or recovery code for step-up MFA (critical actions)." }
     releaseId: { name: id, in: path, required: true, schema: { type: string, example: rel_01J8ZK3M4N5P6Q7R8S9T0V1W2X } }
@@ -65,7 +66,7 @@ components:
           type: object
           required: [code, message]
           properties:
-            code: { type: string, enum: [APP_NOT_FOUND, RELEASE_NOT_AVAILABLE, VERSION_UNSUPPORTED, CHANNEL_FORBIDDEN, TENANT_POLICY_INVALID, LICENSE_TOKEN_INVALID, DISTRIBUTION_DEGRADED, CHECKLIST_FAILED, SIGNING_REFUSED, SOD_VIOLATION, MFA_REQUIRED, RATE_LIMITED, INVALID_TRANSITION, UPLOAD_REJECTED, VALIDATION_FAILED, UNAUTHENTICATED, FORBIDDEN] }
+            code: { type: string, enum: [APP_NOT_FOUND, RELEASE_NOT_AVAILABLE, VERSION_UNSUPPORTED, CHANNEL_FORBIDDEN, TENANT_POLICY_INVALID, LICENSE_TOKEN_INVALID, INSTALLATION_KEY_REQUIRED, INSTALLATION_KEY_INVALID, PRECONDITION_REQUIRED, POLICY_VERSION_CONFLICT, DISTRIBUTION_DEGRADED, CHECKLIST_FAILED, SIGNING_REFUSED, SOD_VIOLATION, MFA_REQUIRED, RATE_LIMITED, INVALID_TRANSITION, UPLOAD_REJECTED, VALIDATION_FAILED, UNAUTHENTICATED, FORBIDDEN] }
             message: { type: string }
             details: { type: object }
     UpdateResponse:
@@ -166,6 +167,136 @@ components:
             commit: { type: string }
         signature: { type: string, description: "base64url Ed25519 over canonical JSON of payload (CI attestation key)" }
         key_id: { type: string }
+    InstallationRegistration:
+      type: object
+      description: Signed (update-response key), valid 15 minutes. The key is shown only in this response.
+      required: [type, installation_id, installation_key, key_fingerprint, edition, channel, mode, ring, ring_name, policy_version, portal_url, registered_at, issued_at, expires_at, key_id, signature]
+      properties:
+        type: { const: installation_registration }
+        installation_id: { type: string, example: inst_01J6TEST }
+        installation_key: { type: string, example: "wsik_4mT…", description: "Store in .env-referenced secret storage; send as `Authorization: Installation <key>`" }
+        key_fingerprint: { type: string, example: "sha256:9f2c61d0a4b7e113" }
+        edition: { type: string, enum: [free, business, enterprise], description: "free = Professional" }
+        channel: { type: string, enum: [stable, beta, lts] }
+        mode: { type: string, enum: [MANAGED, SELF_HOSTED, AIR_GAPPED] }
+        ring: { type: integer, minimum: 0, maximum: 3 }
+        ring_name: { type: string, enum: [canary, early, broad, conservative] }
+        policy_version: { type: integer, description: "Portal policy mirror version (0 = none yet); use as If-Match for the first PUT policy" }
+        portal_url: { type: string, example: https://download.worksuitecloud.com }
+        registered_at: { type: string, format: date-time }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        key_id: { type: string }
+        signature: { type: string }
+    AutoUpdatePlan:
+      type: object
+      description: Signed plan, valid 2 hours (expires_at − issued_at = 7200 s). Next run = first maintenance window at or after max(earliest_at, now), skipping blackouts, and before latest_at.
+      required: [type, schema, installation_id, plan_id, state, release, path, ring, ring_name, ring_open, ring_open_at, earliest_at, latest_at, auto_install, policy_mode, policy_version, holds, cancelled, minimum_supported_version, below_minimum, issued_at, expires_at, key_id, signature]
+      properties:
+        type: { const: auto_update_plan }
+        schema: { const: 1 }
+        installation_id: { type: string }
+        plan_id: { type: [string, "null"], example: pln_01JA… }
+        state: { type: string, enum: [NONE, PLANNED, POSTPONED, SKIPPED, HELD, DONE], description: "NONE = nothing to install; HELD = rollout paused / health gate / rolled back here" }
+        release:
+          type: [object, "null"]
+          description: Next release to install (first hop of the path)
+          properties:
+            release_id: { type: string }
+            version: { type: string, example: 3.1.0 }
+            build: { type: integer, example: 1574 }
+            channel: { type: string, enum: [stable, beta, lts] }
+            severity: { type: string, enum: [PATCH, MINOR, MAJOR, SECURITY, CRITICAL] }
+            release_type: { type: string, enum: [OPTIONAL, RECOMMENDED, MANDATORY, CRITICAL] }
+            edition: { type: string, enum: [free, business, enterprise, all] }
+            package_sha256: { type: [string, "null"] }
+            package_size: { type: [integer, "null"] }
+            min_from_version: { type: [string, "null"] }
+            migrations_reversible: { type: [boolean, "null"] }
+            release_manifest_url: { type: string, description: "Signed release manifest; verify against the pinned release key before staging" }
+        path: { type: array, items: { type: object, properties: { release_id: { type: string }, version: { type: string }, build: { type: integer } } }, description: "Upgrade path, e.g. 2.9.4 → 3.0.0 → 3.1.0" }
+        ring: { type: integer, minimum: 0, maximum: 3 }
+        ring_name: { type: string, enum: [canary, early, broad, conservative] }
+        ring_open: { type: boolean }
+        ring_open_at: { type: [string, "null"], format: date-time, description: "Actual or projected opening of this installation's ring; null while paused" }
+        earliest_at: { type: [string, "null"], format: date-time }
+        latest_at: { type: [string, "null"], format: date-time, description: "Campaign deadline or mandatory_after, else ring open + 7 days (security/critical) or + 14 days" }
+        auto_install: { type: boolean, description: "Policy mode allows this release to install itself (OFF/NOTIFY never; AUTO_SECURITY security/critical patches; AUTO_MINOR non-major; AUTO_ALL everything)" }
+        policy_mode: { type: string, enum: [OFF, NOTIFY, AUTO_SECURITY, AUTO_MINOR, AUTO_ALL] }
+        policy_version: { type: integer }
+        holds: { type: array, items: { type: object, properties: { code: { type: string, enum: [ROLLOUT_PAUSED, HEALTH_GATE, ROLLED_BACK_HERE] }, message: { type: string } } } }
+        cancelled:
+          type: array
+          description: Plans cancelled in the last 30 days because the release was withdrawn — cancel any scheduled run for these (AC-SU-14)
+          items:
+            type: object
+            properties:
+              plan_id: { type: string }
+              release_id: { type: string }
+              version: { type: string }
+              reason: { type: [string, "null"] }
+              cancelled_at: { type: string, format: date-time }
+              withdrawn_at: { type: [string, "null"], format: date-time }
+              rollback_requested: { type: boolean }
+        minimum_supported_version: { type: [string, "null"] }
+        below_minimum: { type: boolean }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        key_id: { type: string }
+        signature: { type: string }
+    AutoUpdatePolicyBody:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [OFF, NOTIFY, AUTO_SECURITY, AUTO_MINOR, AUTO_ALL], description: "OFF not allowed for MANAGED; offline/air-gapped only OFF or NOTIFY" }
+        windows: { type: array, maxItems: 14, items: { type: object, required: [days, start, length_minutes], properties: { days: { type: array, items: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] } }, start: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "02:00" }, length_minutes: { type: integer, minimum: 15, maximum: 720 } } } }
+        blackouts: { type: array, items: { type: object, required: [name, from, to], properties: { name: { type: string }, from: { type: string, format: date }, to: { type: string, format: date } } } }
+        timezone: { type: string, example: Asia/Colombo, default: UTC }
+        ring: { type: string, enum: [EARLY, BROAD, CONSERVATIVE], default: BROAD }
+        backup_before: { type: boolean, default: true }
+        auto_rollback: { type: boolean, const: true, description: "Cannot be turned off (422)" }
+        max_active_users: { type: integer, minimum: 0, maximum: 100000, default: 25 }
+        allow_one_way_migrations: { type: boolean, default: false }
+        web_idle_minutes: { type: integer, minimum: 5, maximum: 60, default: 10 }
+        web_forced_hours: { type: integer, minimum: 4, maximum: 72, default: 24 }
+        web_toast_non_admin: { type: boolean, default: true }
+        org_owner: { type: string, description: "Enterprise organisation that owns the policy" }
+        updated_by: { type: string, description: "Tenant-side actor label (no personal data)" }
+    AutoUpdatePolicy:
+      type: object
+      properties:
+        version: { type: integer }
+        mode: { type: string }
+        windows: { type: array, items: { type: object } }
+        blackouts: { type: array, items: { type: object } }
+        timezone: { type: string }
+        ring: { type: string }
+        backup_before: { type: boolean }
+        auto_rollback: { type: boolean }
+        max_active_users: { type: integer }
+        allow_one_way_migrations: { type: boolean }
+        web_idle_minutes: { type: integer }
+        web_forced_hours: { type: integer }
+        web_toast_non_admin: { type: boolean }
+        org_owner: { type: [string, "null"] }
+        updated_by: { type: [string, "null"] }
+        locked_fields: { type: array, items: { type: object, properties: { field: { type: string }, value: {}, by: { type: string }, at: { type: string, format: date-time } } }, description: "Portal / organisation locks (shown read-only with who locked them)" }
+        synced_at: { type: [string, "null"], format: date-time }
+    AutoUpdatePolicyResponse:
+      type: object
+      description: Signed, valid 15 minutes. The ETag header carries the version.
+      required: [type, installation_id, version, policy, issued_at, expires_at, key_id, signature]
+      properties:
+        type: { const: auto_update_policy }
+        installation_id: { type: string }
+        version: { type: integer }
+        policy: { oneOf: [{ $ref: "#/components/schemas/AutoUpdatePolicy" }, { type: "null" }] }
+        overridden: { type: array, items: { type: string }, description: "PUT only: submitted fields replaced by a portal lock" }
+        default_mode: { type: string, description: "GET only: edition default when no policy has been synced" }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        key_id: { type: string }
+        signature: { type: string }
   responses:
     Error: { description: Error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 paths:
@@ -199,6 +330,24 @@ paths:
       security: [{}, { tenantPolicy: [] }]
       parameters: [{ name: app, in: path, required: true, schema: { type: string } }, { name: channel, in: path, required: true, schema: { type: string } }]
       responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ChannelManifest" } } } }, "403": { $ref: "#/components/responses/Error" } }
+  /api/v1/apps/{app}/channels/{channel}/appcast.xml:
+    get:
+      tags: [Desktop]
+      summary: Sparkle appcast for macOS apps that update through Sparkle (docs/sparkle.md)
+      description: >-
+        What an anonymous macOS update check on the channel is offered, as one Sparkle item: build number as
+        sparkle:version, version as sparkle:shortVersionString, the public download URL as enclosure, with the
+        sparkle:edSignature CI attested (files[].sparkle_ed_signature). Public channels of public apps only.
+      parameters:
+        - { name: app, in: path, required: true, schema: { type: string, example: lk.worksuite.office } }
+        - { name: channel, in: path, required: true, schema: { type: string, example: beta } }
+        - { name: arch, in: query, required: true, schema: { type: string, enum: [arm64, x64] } }
+        - { name: type, in: query, schema: { type: string, enum: [dmg, zip] }, description: "Default: the slot's default type" }
+      responses:
+        "200": { description: RSS 2.0 with the Sparkle namespace, content: { application/rss+xml: { schema: { type: string } } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
   /api/v1/releases/{id}/manifest:
     get: { tags: [Desktop], summary: Signed release manifest, parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: OK } } }
   /api/v1/releases/{id}/state:
@@ -266,20 +415,129 @@ paths:
     get:
       tags: [Server]
       summary: Server update status + edition package + upgrade chain (§17.10)
-      security: [{ license: [] }]
+      description: |
+        Adds (WS-CORE-SYSUPDATE §10): `severity`, `minimum_supported_version`, `below_minimum` (an available
+        update becomes UPDATE_REQUIRED), `rollout {ring, ring_name, ring_open, ring_open_at}`,
+        `withdrawn_releases [{release_id, version, withdrawn_at}]` and `rollback_requested`.
+      security: [{ installationKey: [] }, { license: [] }]
       parameters:
         - { name: version, in: query, schema: { type: string } }
         - { name: build, in: query, schema: { type: integer } }
         - { name: edition, in: query, schema: { type: string, enum: [free, business, enterprise] } }
         - { name: installed_edition, in: query, description: "Edition currently installed; when it differs from the licensed edition the response carries edition_switch (FR-TEN-UPD-17)", schema: { type: string, enum: [free, business, enterprise] } }
-        - { name: channel, in: query, schema: { type: string } }
+        - { name: channel, in: query, schema: { type: string, enum: [stable, beta, lts] } }
       responses: { "200": { description: Signed server update response }, "401": { $ref: "#/components/responses/Error" } }
   /api/v1/server/downloads/grant:
-    post: { tags: [Server], security: [{ license: [] }], responses: { "200": { description: OK } } }
+    post: { tags: [Server], security: [{ installationKey: [] }, { license: [] }], responses: { "200": { description: OK } } }
   /api/v1/server/installations/report:
-    post: { tags: [Server], security: [{ license: [] }], summary: Installation heartbeat (no business data), responses: { "200": { description: OK } } }
+    post:
+      tags: [Server]
+      security: [{ installationKey: [] }, { license: [] }]
+      summary: Installation heartbeat (no business data)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version: { type: string }
+                build: { type: integer }
+                channel: { type: string }
+                mode: { type: string, enum: [MANAGED, SELF_HOSTED, AIR_GAPPED] }
+                php_version: { type: string }
+                db_version: { type: string }
+                mariadb_version: { type: string }
+                node_version: { type: string }
+                disk_free_mb: { type: integer }
+                policy_mode: { type: string, enum: [OFF, NOTIFY, AUTO_SECURITY, AUTO_MINOR, AUTO_ALL] }
+                health: { type: string, enum: [OK, DEGRADED, DOWN] }
+                offline_mode: { type: boolean }
+                last_run: { type: object, properties: { result: { type: string, enum: [SUCCEEDED, ROLLED_BACK, FAILED, CANCELLED] } } }
+      responses: { "200": { description: OK } }
   /api/v1/server/update-events:
-    post: { tags: [Server], security: [{ license: [] }], summary: started / completed / failed(step) / rolled_back, responses: { "202": { description: Accepted } } }
+    post:
+      tags: [Server]
+      security: [{ installationKey: [] }, { license: [] }]
+      summary: started / completed / failed(step) / rolled_back runs, and scheduled / postponed / skipped plan decisions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                events:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [event_id, type]
+                    properties:
+                      event_id: { type: string }
+                      type: { type: string, enum: [started, completed, failed, rolled_back, scheduled, postponed, skipped] }
+                      from: { type: string }
+                      to: { type: string }
+                      step: { type: string }
+                      error_code: { type: string }
+                      reason: { type: string }
+                      at: { type: string, format: date-time }
+      responses: { "202": { description: "Accepted: { accepted: n }" } }
+  /api/v1/server/advisories/ack:
+    post: { tags: [Server], security: [{ installationKey: [] }, { license: [] }], summary: Security advisory acknowledged, responses: { "200": { description: OK } } }
+  /api/v1/server/installations/register:
+    post:
+      tags: [Server]
+      summary: Link an installation — licence token in, installation_id + installation key out (FR-SU-LINK-01)
+      description: Re-registering the same installation issues a new key and revokes the previous one (200 instead of 201).
+      security: [{ license: [] }, {}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [license_token]
+              properties:
+                license_token: { type: string, description: "Installation licence token from CoreLicenseService (or send `Authorization: License <token>`)" }
+                name: { type: string, example: erp.customer-a.example }
+                version: { type: string, example: 3.0.0 }
+                build: { type: integer, example: 1482 }
+                channel: { type: string, enum: [stable, beta, lts], default: stable, description: "lts: Enterprise only" }
+                mode: { type: string, enum: [MANAGED, SELF_HOSTED, AIR_GAPPED], default: SELF_HOSTED }
+                offline_mode: { type: boolean }
+                admin_contacts: { type: array, maxItems: 20, items: { type: string, format: email }, description: "Admin contacts for update e-mails (FR-DL-NOTIFY-01)" }
+      responses:
+        "201": { description: First registration, content: { application/json: { schema: { $ref: "#/components/schemas/InstallationRegistration" } } } }
+        "200": { description: Re-registered (new key), content: { application/json: { schema: { $ref: "#/components/schemas/InstallationRegistration" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /api/v1/server/auto-update/plan:
+    get:
+      tags: [Server]
+      summary: Signed automatic-update plan (2-hour expiry) — release, ring open time, latest allowed time (FR-SU-PLAN-01)
+      security: [{ installationKey: [] }]
+      responses:
+        "200": { description: Plan (state NONE when nothing applies), content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdatePlan" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/server/auto-update/policy:
+    get:
+      tags: [Server]
+      summary: Current policy mirror and its version (ETag)
+      security: [{ installationKey: [] }]
+      responses:
+        "200": { description: OK, headers: { ETag: { schema: { type: string, example: '"3"' } } }, content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdatePolicyResponse" } } } }
+    put:
+      tags: [Server]
+      summary: Sync the installation's automatic-update policy (FR-SU-POL-02) — audited
+      security: [{ installationKey: [] }]
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string, example: '"3"' }, description: 'Version last synced ("0" for the first sync); W/"3" and 3 are accepted' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdatePolicyBody" } } } }
+      responses:
+        "200": { description: Saved; version incremented, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: "#/components/schemas/AutoUpdatePolicyResponse" } } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "412": { description: "POLICY_VERSION_CONFLICT — details: { current_version, policy: AutoUpdatePolicy }", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { $ref: "#/components/responses/Error" }
+        "428": { description: PRECONDITION_REQUIRED — If-Match missing, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /api/v1/auth/login:
     post:
       tags: [Auth]
@@ -343,7 +601,12 @@ paths:
       parameters: [{ $ref: "#/components/parameters/releaseId" }, { $ref: "#/components/parameters/mfa" }]
       responses: { "200": { description: PUBLISHED }, "401": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" }, "422": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
   /api/v1/admin/releases/{id}/withdraw:
-    post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }, { $ref: "#/components/parameters/mfa" }], responses: { "200": { description: WITHDRAWN } } }
+    post:
+      tags: [Admin]
+      security: [{ session: [] }]
+      parameters: [{ $ref: "#/components/parameters/releaseId" }, { $ref: "#/components/parameters/mfa" }]
+      requestBody: { content: { application/json: { schema: { type: object, required: [reason, confirm_version], properties: { reason: { type: string }, confirm_version: { type: string }, request_rollback: { type: boolean, description: "Server releases: ask installations on this release to roll back" } } } } } }
+      responses: { "200": { description: "WITHDRAWN — server releases also cancel every open auto-update plan (FR-DL-WD-01)" } }
   /api/v1/admin/releases/{id}/rollout/{action}:
     post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }, { name: action, in: path, required: true, schema: { type: string, enum: [pause, resume, increase, complete] } }, { $ref: "#/components/parameters/mfa" }], responses: { "200": { description: OK } } }
   /os/manifests/{ring}/{arch}.json:
@@ -437,6 +700,64 @@ paths:
       responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/Error" } }
   /api/v1/admin/os/emergency:
     post: { tags: [OS, Admin], summary: "Emergency security release to every ring (critical, mandatory, 100 %)", security: [{ session: [] }], responses: { "201": { description: Published } } }
+  /api/v1/admin/server/releases:
+    get:
+      tags: [Admin]
+      security: [{ session: [] }]
+      summary: "DL-1 server releases with fleet KPIs (release.view)"
+      parameters: [{ name: channel, in: query, schema: { type: string, enum: [STABLE, BETA, LTS] } }, { name: status, in: query, schema: { type: string, enum: [draft, testing, published, paused, withdrawn] } }]
+      responses: { "200": { description: "{ kpis, data: (AdminRelease & {severity, editions, editions_label, ring_summary, adoption_pct, installations_on_version, commit})[], minimums }" } }
+    post:
+      tags: [Admin]
+      security: [{ session: [] }]
+      summary: "DL-2 create a server release with every field (FR-DL-REL-01)"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, build, channel, severity, editions]
+              properties:
+                version: { type: string }
+                build: { type: integer }
+                commit: { type: string }
+                channel: { type: string, enum: [STABLE, BETA, LTS] }
+                severity: { type: string, enum: [PATCH, MINOR, MAJOR, SECURITY, CRITICAL] }
+                min_from_version: { type: string }
+                notes: { type: string, description: Release notes in Markdown }
+                known_issues: { type: string }
+                upgrade_notes: { type: string }
+                migrations_reversible: { type: [boolean, "null"] }
+                editions: { type: array, items: { type: string, enum: [PROFESSIONAL, FREE, BUSINESS, ENTERPRISE, ALL] } }
+                desktop_compat: { type: string }
+                admin_notice: { type: string }
+      responses: { "201": { description: Created }, "409": { $ref: "#/components/responses/Error" }, "422": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/server/releases/{id}/publish:
+    post:
+      tags: [Admin]
+      security: [{ session: [] }]
+      summary: "Release Manager publish: QA approver cannot publish; step-up MFA; type-to-confirm (FR-DL-REL-04)"
+      parameters: [{ $ref: "#/components/parameters/releaseId" }, { $ref: "#/components/parameters/mfa" }]
+      requestBody: { content: { application/json: { schema: { type: object, required: [confirm_version], properties: { confirm_version: { type: string }, reason: { type: string } } } } } }
+      responses: { "200": { description: PUBLISHED — ring 0 opens, SHA256SUMS + .sig written }, "401": { $ref: "#/components/responses/Error" }, "403": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" }, "422": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/server/releases/{id}/rollout:
+    get: { tags: [Admin], security: [{ session: [] }], summary: "DL-3 rings, health gate, outcomes and campaign", parameters: [{ $ref: "#/components/parameters/releaseId" }], responses: { "200": { description: OK } } }
+  /api/v1/admin/server/releases/{id}/rollout/{action}:
+    post:
+      tags: [Admin]
+      security: [{ session: [] }]
+      summary: "Pause, resume or extend the ring rollout (FR-DL-RING-02)"
+      parameters: [{ $ref: "#/components/parameters/releaseId" }, { name: action, in: path, required: true, schema: { type: string, enum: [pause, resume, extend] } }, { $ref: "#/components/parameters/mfa" }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { reason: { type: string }, hours: { type: integer, minimum: 1, maximum: 336 } } } } } }
+      responses: { "200": { description: Rollout }, "409": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/server/installations/{installation_id}/override:
+    put:
+      tags: [Admin]
+      security: [{ session: [] }]
+      summary: "Pin an installation's ring and/or lock policy fields (audited policy override)"
+      parameters: [{ name: installation_id, in: path, required: true, schema: { type: string } }, { $ref: "#/components/parameters/mfa" }]
+      requestBody: { content: { application/json: { schema: { type: object, required: [reason], properties: { ring: { type: [integer, "null"], minimum: 0, maximum: 3 }, locks: { type: object }, reason: { type: string } } } } } }
+      responses: { "200": { description: OK } }
   /api/v1/uploads/tus/{id}:
     patch:
       tags: [Admin, CI]

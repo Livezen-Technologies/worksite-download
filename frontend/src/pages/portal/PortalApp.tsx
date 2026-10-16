@@ -16,9 +16,11 @@ import { useToast } from '@/components/ui/Toast';
 import { ChannelBadge } from '@/components/StatusBadges';
 import { PlatformDownloads } from '@/components/public/blocks';
 import { AuthShell, ForgotPage, LoginPage, ResetPage, SecuritySettings } from '@/pages/auth/AuthPages';
+import { LicenceDetail, MyLicences } from './Licenses';
 
 const NAV = [
   { to: '/portal', label: 'My Downloads', end: true },
+  { to: '/portal/licenses', label: 'My licences' },
   { to: '/portal/history', label: 'Download history' },
   { to: '/portal/notifications', label: 'Release notifications' },
   { to: '/portal/bug-reports', label: 'My bug reports' },
@@ -350,6 +352,8 @@ export default function PortalApp() {
           }
         >
           <Route index element={<><PageHeader title="My Downloads" sub="Stable, and Beta if you opted in — plus private applications you have access to." /><MyDownloads /></>} />
+          <Route path="licenses" element={<><PageHeader title="My licences" sub="Your WorkSuite Server licences: keys, servers, offline activation and trials." /><MyLicences /></>} />
+          <Route path="licenses/:id" element={<><PageHeader title="Licence" /><LicenceDetail /></>} />
           <Route path="history" element={<><PageHeader title="Download history" /><History /></>} />
           <Route path="notifications" element={<><PageHeader title="Release notifications" /><Notifications /></>} />
           <Route path="bug-reports" element={<><PageHeader title="My bug reports" sub="Updates from WorkSuite support on the problems you reported." /><BugReports /></>} />

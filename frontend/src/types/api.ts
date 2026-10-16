@@ -6,7 +6,7 @@
 export type Platform = 'windows' | 'macos' | 'linux' | 'android' | 'ios' | 'server';
 export type Arch = 'x64' | 'arm64' | 'universal' | 'any';
 export type PackageType = 'exe' | 'msi' | 'dmg' | 'pkg' | 'zip' | 'appimage' | 'deb' | 'rpm' | 'apk' | 'aab' | 'ipa';
-export type ChannelCode = 'STABLE' | 'BETA' | 'DEV' | 'INTERNAL' | 'CUSTOM';
+export type ChannelCode = 'STABLE' | 'BETA' | 'DEV' | 'INTERNAL' | 'CUSTOM' | 'LTS';
 export type ReleaseStatus =
   | 'DRAFT'
   | 'UPLOADING'
@@ -180,6 +180,8 @@ export interface SiteInfo {
 export type AppDetail = AppSummary & {
   page: DownloadPage;
   latest: PublicReleaseDetail | null;
+  /** The current Beta release when this viewer may see Beta and it is newer than Stable. */
+  beta?: PublicReleaseDetail | null;
   channels: PublicChannel[];
 };
 
@@ -515,6 +517,8 @@ export interface AdminPackage {
   health: 'OK' | 'DEGRADED' | 'UNKNOWN';
   minimum_os_version: string | null;
   active_revision: Revision | null;
+  /** A newer revision still being processed (shown live while validation runs). */
+  processing_revision?: Revision | null;
   revisions: Revision[];
 }
 
@@ -585,6 +589,12 @@ export interface ServerMeta {
   staging_test: { status: 'PASSED' | 'FAILED' | 'PENDING'; url?: string; editions?: Partial<Record<Edition, string>> } | null;
   admin_notice: string | null;
   advisory: string | null;
+  /** Server release console fields (WS-CORE-SYSUPDATE §4); absent on older responses. */
+  severity?: ServerSeverity | null;
+  commit?: string | null;
+  upgrade_notes?: string | null;
+  migrations_reversible?: boolean | null;
+  editions?: Edition[] | null;
 }
 
 export type DeploymentMode = 'MANAGED' | 'SELF_HOSTED' | 'AIR_GAPPED';
@@ -742,6 +752,19 @@ export interface Installation {
   last_run_status: string | null;
   php_version: string | null;
   db_version: string | null;
+  /** Fleet fields (WS-CORE-SYSUPDATE FR-DL-FLEET-01); optional for older responses. */
+  node_version?: string | null;
+  disk_free_mb?: number | null;
+  health?: 'OK' | 'DEGRADED' | 'DOWN' | null;
+  offline_mode?: boolean;
+  policy_mode?: PolicyMode | null;
+  policy_version?: number | null;
+  ring?: number;
+  ring_name?: 'canary' | 'early' | 'broad' | 'conservative';
+  ring_override?: boolean;
+  below_minimum?: boolean;
+  linked?: boolean;
+  registered_at?: string | null;
 }
 
 export interface InstallationStats {
@@ -750,6 +773,107 @@ export interface InstallationStats {
   failed_runs: { installation_id: string; name?: string; version?: string; error?: string; at?: string }[];
   rolled_back: { installation_id: string; name?: string; version?: string; at?: string }[];
   unsupported: number;
+  /** DL-4 segment counts. */
+  segments?: FleetSegments;
+  /** DL-4 adoption per release. */
+  adoption?: { release_id: string; version: string; status: ReleaseStatus; channel: ChannelCode; installations: number; pct: number }[];
+}
+
+// ---------------------------------------------------------------- server release console (WS-CORE-SYSUPDATE §4, DL-1…DL-4)
+
+export type ServerSeverity = 'PATCH' | 'MINOR' | 'MAJOR' | 'SECURITY' | 'CRITICAL';
+export type PolicyMode = 'OFF' | 'NOTIFY' | 'AUTO_SECURITY' | 'AUTO_MINOR' | 'AUTO_ALL';
+export type ServerChannel = 'STABLE' | 'BETA' | 'LTS';
+
+export interface ServerReleaseKpis {
+  linked: number;
+  online: number;
+  offline: number;
+  latest_stable: string | null;
+  on_latest_stable: number;
+  on_latest_pct: number;
+  below_minimum: number;
+  minimum_stable: string | null;
+  rollbacks_30d: number;
+  rollback_versions: string[];
+}
+
+export type ServerReleaseRow = AdminRelease & {
+  severity: ServerSeverity;
+  editions: Edition[];
+  editions_label: string;
+  ring_summary: string;
+  adoption_pct: number;
+  installations_on_version: number;
+  commit: string | null;
+};
+
+export interface ServerReleasesResponse {
+  kpis: ServerReleaseKpis;
+  data: ServerReleaseRow[];
+  minimums: { channel: ServerChannel; minimum_version: string | null; enforce_from: string | null }[];
+}
+
+export interface CreateServerReleaseBody {
+  version: string;
+  build: number;
+  commit?: string;
+  channel: ServerChannel;
+  severity: ServerSeverity;
+  min_from_version?: string;
+  notes?: string;
+  known_issues?: string;
+  upgrade_notes?: string;
+  migrations_reversible: boolean | null;
+  editions: Edition[];
+  desktop_compat?: string;
+  admin_notice?: string;
+}
+
+export type RingState = 'DONE' | 'OPEN' | 'PAUSED' | 'WAITING';
+export interface ServerRing {
+  ring: 0 | 1 | 2 | 3;
+  key: 'canary' | 'early' | 'broad' | 'conservative';
+  name: string;
+  state: RingState;
+  opened_at: string | null;
+  opens_at: string | null;
+  hold_hours: number;
+  extended_hours: number;
+  hold_ends_at: string | null;
+  installations: number;
+  updated: number;
+  detail: string;
+}
+
+export interface GateSignal {
+  key: 'rollback_rate' | 'failed_runs' | 'crash_free' | 'new_p0p1';
+  label: string;
+  value: number | null;
+  display: string;
+  threshold: string;
+  state: 'OK' | 'WATCH' | 'FAIL';
+}
+
+export interface ServerRollout {
+  release: { id: string; version: string; build: number; status: ReleaseStatus; channel: ChannelCode; severity: ServerSeverity; published_at: string | null; withdrawn_at: string | null };
+  status: 'PENDING' | 'ACTIVE' | 'PAUSED' | 'DONE';
+  mode: 'RINGS' | string | null;
+  compressed: boolean;
+  pause: { kind: 'GATE' | 'MANUAL'; reason: string; at: string; by: string; ring: number | null } | null;
+  rings: ServerRing[];
+  gate: { state: 'PASSING' | 'WATCH' | 'FAILING'; signals: GateSignal[]; reasons: string[]; runs: number; evaluated_at: string };
+  outcomes: { updated: number; auto_scheduled: number; waiting_for_admin: number; postponed: number; offline: number; held: number; skipped: number };
+  campaign: (Campaign & { delivered: { in_app: number; email: number } }) | null;
+}
+
+export interface FleetSegments {
+  all: number;
+  on_latest: number;
+  latest_stable: string | null;
+  below_minimum: number;
+  on_hold: number;
+  stale: number;
 }
 
 // ---------------------------------------------------------------- analytics
@@ -999,4 +1123,92 @@ export interface PortalSubscription {
   app: string;
   channel: ChannelCode;
   enabled: boolean;
+}
+
+// ---------------------------------------------------------------- licences
+export type LicenseState = 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'REVOKED' | 'NOT_STARTED' | 'DEACTIVATED';
+
+export interface LicenseActivation {
+  id: number;
+  installation_id: string;
+  hostname: string | null;
+  server_url: string | null;
+  fingerprint: string | null;
+  activated_at: string | null;
+  last_validated_at: string | null;
+  deactivated_at: string | null;
+  deactivate_reason: string | null;
+  active: boolean;
+}
+
+export interface License {
+  id: string;
+  license_key_masked: string;
+  /** Present once, in the create response only. */
+  license_key?: string;
+  organization: string;
+  contact_email: string | null;
+  edition: 'FREE' | 'BUSINESS' | 'ENTERPRISE';
+  status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+  state: LicenseState;
+  status_reason: string | null;
+  max_activations: number;
+  active_activations: number;
+  starts_at: string | null;
+  expires_at: string | null;
+  updates_until: string | null;
+  server_bound: boolean;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  activations?: LicenseActivation[];
+}
+
+export interface LicenseBody {
+  organization: string;
+  contact_email?: string;
+  edition: 'FREE' | 'BUSINESS' | 'ENTERPRISE';
+  max_activations: number;
+  expires_at: string;
+  updates_until?: string;
+  server_bound?: boolean;
+  notes?: string;
+}
+
+export type EntitlementValue = boolean | number | string | null;
+export interface EntitlementDef {
+  key: string;
+  label: string;
+  kind: 'bool' | 'limit' | 'value';
+  category: 'apps' | 'limits' | 'updates' | 'services' | 'support';
+  module: string | null;
+  description: string | null;
+}
+export interface EntitlementMatrix {
+  entitlements: EntitlementDef[];
+  editions: Record<string, Record<string, EntitlementValue>>;
+}
+export interface LicenseEntitlements {
+  edition: string;
+  addons: Record<string, EntitlementValue>;
+  resolved: Record<string, EntitlementValue>;
+}
+
+export interface LicenseRiskFlag {
+  id: number;
+  license_id: string;
+  organization: string;
+  license_key_masked: string;
+  installation_id: string | null;
+  rule: string;
+  label: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  detail: Record<string, unknown> | null;
+  status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
+  occurrences: number;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  resolved_by: string | null;
+  resolution: string | null;
 }

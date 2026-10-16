@@ -100,6 +100,9 @@ abstract class BaseApiController extends Controller
 
             return;
         }
+        if ($cfg->mfaDisabled && $this->auth->user !== null) {
+            return; // two-factor switched off for interactive users (UpdateCenter::$mfaDisabled)
+        }
         $token = trim($this->request->getHeaderLine('X-MFA-Token'));
         $user  = $this->auth->user;
         if ($token !== '' && $user !== null) {

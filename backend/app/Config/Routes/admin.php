@@ -65,7 +65,31 @@ $routes->group('api/v1/admin', ['namespace' => 'App\Controllers\Admin', 'filter'
     $routes->get('releases/(:segment)', 'ReleasesController::show/$1', ['filter' => 'perm:release.view']);
     $routes->patch('releases/(:segment)', 'ReleasesController::update/$1', ['filter' => 'perm:release.edit']);
 
+    // Server release console (WS-CORE-SYSUPDATE-SRS-001 DL-1..DL-4)
+    $routes->get('server/releases', 'ServerReleasesController::index', ['filter' => 'perm:release.view']);
+    $routes->post('server/releases', 'ServerReleasesController::create', ['filter' => 'perm:release.create']);
+    $routes->post('server/releases/(:segment)/publish', 'ServerReleasesController::publish/$1', ['filter' => 'perm:release.publish']);
+    $routes->get('server/releases/(:segment)/rollout', 'ServerReleasesController::rollout/$1', ['filter' => 'perm:rollout.view']);
+    $routes->post('server/releases/(:segment)/rollout/(pause|resume|extend)', 'ServerReleasesController::rolloutAction/$1/$2', ['filter' => 'perm:release.publish']);
+    $routes->patch('server/releases/(:segment)', 'ServerReleasesController::update/$1', ['filter' => 'perm:release.edit']);
+    $routes->put('server/installations/(:segment)/override', 'ServerReleasesController::override/$1', ['filter' => 'perm:fleet.manage']);
+
     // Server installations & managed fleet
+    // WorkSuite Server licences (the Download Center is the licence authority)
+    $routes->get('licenses', 'LicensesController::index', ['filter' => 'perm:license.view']);
+    $routes->post('licenses', 'LicensesController::create', ['filter' => 'perm:license.manage']);
+    $routes->get('license-risk', 'LicenseRiskController::index', ['filter' => 'perm:license.view']);
+    $routes->post('license-risk/(:num)/(acknowledge|resolve|reopen)', 'LicenseRiskController::status/$1/$2', ['filter' => 'perm:license.manage']);
+    $routes->get('entitlements', 'EntitlementsController::index', ['filter' => 'perm:license.view']);
+    $routes->post('entitlements', 'EntitlementsController::define', ['filter' => 'perm:license.manage']);
+    $routes->put('entitlements/editions/(:segment)', 'EntitlementsController::edition/$1', ['filter' => 'perm:license.manage']);
+    $routes->get('licenses/(:segment)/entitlements', 'EntitlementsController::licenseShow/$1', ['filter' => 'perm:license.view']);
+    $routes->put('licenses/(:segment)/entitlements', 'EntitlementsController::licenseUpdate/$1', ['filter' => 'perm:license.manage']);
+    $routes->get('licenses/(:segment)', 'LicensesController::show/$1', ['filter' => 'perm:license.view']);
+    $routes->patch('licenses/(:segment)', 'LicensesController::update/$1', ['filter' => 'perm:license.manage']);
+    $routes->post('licenses/(:segment)/renew', 'LicensesController::renew/$1', ['filter' => 'perm:license.manage']);
+    $routes->post('licenses/(:segment)/(suspend|resume|revoke)', 'LicensesController::status/$1/$2', ['filter' => 'perm:license.manage']);
+    $routes->post('licenses/(:segment)/activations/(:num)/deactivate', 'LicensesController::deactivate/$1/$2', ['filter' => 'perm:license.manage']);
     $routes->get('installations/stats', 'InstallationsController::stats', ['filter' => 'perm:installations.view']);
     $routes->get('installations', 'InstallationsController::index', ['filter' => 'perm:installations.view']);
     $routes->get('fleet', 'InstallationsController::fleetIndex', ['filter' => 'perm:installations.view']);

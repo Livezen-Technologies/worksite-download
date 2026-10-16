@@ -1,6 +1,6 @@
 # WorkSuite Update Center
 
-**updates.worksuitecloud.com** — the separate distribution application for WorkSuite
+**download.worksuitecloud.com** — the separate distribution application for WorkSuite
 software (WS-UPDATE-CENTER-SRS-001 v1.2): release management, package distribution,
 signed manifests, public download pages, the Desktop Update API, WorkSuite Server
 edition updates (§17) and Bug Trace crash / bug reporting (§18).
@@ -13,8 +13,8 @@ frontend/         React 19 + TypeScript + Tailwind v4 — public site, user port
 sdks/             Bug Trace SDKs: web, Electron main process, React Native, tenant PHP reporter
 docker/ nginx/    Container images, compose stack, nginx + CDN edge worker
 openapi/          OpenAPI 3.1 description (served at /api-docs)
-docs/             API contract, versioning
-scripts/          version.php (version + changelog management)
+docs/             API contract, versioning, Linux repositories
+scripts/          version.php (version + changelog management), publish-release.mjs, publish-linux-repos.sh
 ```
 
 ## Quick start (local, no Docker)
@@ -83,7 +83,7 @@ php scripts/version.php check
 | Command | Purpose |
 |---|---|
 | `uc:worker` | Queue consumer (package pipeline, manifests, webhooks, mail, Bug Trace) |
-| `uc:scheduler [--loop]` | Scheduled publish, rollout auto-advance / auto-pause, campaign reminders, fleet evaluation, health + storage probes, analytics roll-ups, retention |
+| `uc:scheduler [--loop]` | Scheduled publish, rollout auto-advance / auto-pause, campaign reminders, fleet evaluation, server ring health gate, health + storage probes, analytics roll-ups, retention |
 | `uc:health` | Component health (non-zero exit when DOWN) |
 | `uc:keys [--register-dev]` | Public keys in use |
 | `uc:export [--date=]` | Daily write-once export of configuration, changelogs, manifests and audit log (§13.3) |

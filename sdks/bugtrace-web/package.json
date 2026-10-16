@@ -1,6 +1,6 @@
 {
   "name": "@worksuite/bugtrace-web",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "description": "WorkSuite Bug Trace SDK for web and Electron renderers: crash/error capture, breadcrumbs, sessions, offline queue, tenant policy and the \"Report a bug\" dialog.",
   "license": "UNLICENSED",
   "private": true,

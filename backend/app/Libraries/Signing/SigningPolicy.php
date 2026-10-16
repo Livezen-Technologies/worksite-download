@@ -20,6 +20,10 @@ use App\Libraries\CanonicalJson;
  *
  *  CHANNEL manifest — `current.release_manifest_sha256` must be the hash of a
  *  release manifest that verifies under a release key.
+ *
+ *  CHECKSUMS (SHA256SUMS of a published server release, WS-CORE-SYSUPDATE FR-DL-REL-05) —
+ *  `release_manifest_sha256` must be the hash of a release manifest that verifies under a
+ *  release key, and every listed file must be a package of that manifest with the same hash.
  */
 final class SigningPolicy
 {
@@ -46,6 +50,7 @@ final class SigningPolicy
         return match ($kind) {
             'RELEASE' => $this->checkRelease($document, $evidence),
             'CHANNEL' => $this->checkChannel($document, $evidence),
+            'CHECKSUMS' => $this->checkChecksums($document, $evidence),
             'ROTATION' => [],
             'OS_MANIFEST' => $this->checkOsManifest($document, $evidence),
             default   => ['Unknown document kind'],
@@ -112,6 +117,37 @@ final class SigningPolicy
             }
             if (! $twoPerson) {
                 $errors[] = 'Two-person approval (QA + Release Manager, different users) not recorded';
+            }
+        }
+
+        return $errors;
+    }
+
+    private function checkChecksums(array $doc, array $evidence): array
+    {
+        $release = $evidence['release_manifest'] ?? null;
+        if (! is_array($release)) {
+            return ['Signed release manifest required as evidence'];
+        }
+        if (! Ed25519::verifyDocument($release, $this->releaseKeys)) {
+            return ['Evidence release manifest is not signed by a release key'];
+        }
+        if (hash('sha256', CanonicalJson::encode($release)) !== ($doc['release_manifest_sha256'] ?? '')) {
+            return ['Checksums do not reference the evidence release manifest'];
+        }
+        $files = $doc['files'] ?? null;
+        if (! is_array($files) || $files === []) {
+            return ['Checksums list no files'];
+        }
+        $known = [];
+        foreach ((array) ($release['packages'] ?? []) as $p) {
+            $known[(string) ($p['file_name'] ?? '')] = strtolower((string) ($p['sha256'] ?? ''));
+        }
+        $errors = [];
+        foreach ($files as $f) {
+            $name = (string) ($f['name'] ?? '');
+            if (($known[$name] ?? null) !== strtolower((string) ($f['sha256'] ?? ''))) {
+                $errors[] = "File {$name} is not a package of the release manifest";
             }
         }
 

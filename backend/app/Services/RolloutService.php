@@ -321,7 +321,7 @@ class RolloutService
         $db      = db_connect();
         $actions = [];
         $rows    = $db->table('release_rollouts ro')->select('ro.*, r.public_id, r.version, r.auto_pause_on_gate')->join('releases r', 'r.id = ro.release_id')
-            ->where('ro.status', 'ACTIVE')->where('r.status', 'PUBLISHED')->get()->getResultArray();
+            ->where('ro.status', 'ACTIVE')->where('ro.mode !=', 'RINGS')->where('r.status', 'PUBLISHED')->get()->getResultArray();
         foreach ($rows as $ro) {
             $release = Catalog::releaseById((int) $ro['release_id']);
             $t       = self::thresholds($ro['thresholds']);

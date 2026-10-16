@@ -140,6 +140,17 @@ final class BinaryInspector
             return ['ok' => false, 'code' => 'METADATA_MISMATCH', 'message' => "File is {$inspection['format']}, expected {$type}"];
         }
         $found = $inspection['architectures'];
+        /*
+         * A Windows installer is a 32-bit x86 program whatever it installs: an
+         * NSIS setup (electron-builder's `nsis` target) for an x64 or arm64 app
+         * is still "PE32 Intel 80386". So an x86 .exe is accepted in an x64 or
+         * arm64 slot as an installer stub. A PE built for the wrong 64-bit CPU
+         * (arm64 in an x64 slot) is still refused, and the CI attestation pins
+         * the exact bytes either way.
+         */
+        if ($type === 'exe' && $found === ['x86'] && in_array($arch, ['x64', 'arm64'], true)) {
+            return ['ok' => true, 'code' => null, 'message' => 'x86 installer stub accepted for the ' . $arch . ' slot'];
+        }
         if ($found !== [] && ! in_array($arch, ['any', 'universal'], true) && ! in_array($arch, $found, true) && ! in_array('any', $found, true)) {
             return ['ok' => false, 'code' => 'METADATA_MISMATCH', 'message' => 'Binary architecture ' . implode('/', $found) . " does not match {$arch} slot"];
         }

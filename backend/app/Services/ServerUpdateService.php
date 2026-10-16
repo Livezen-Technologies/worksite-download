@@ -36,12 +36,18 @@ class ServerUpdateService
         return db_connect()->table('applications')->where('kind', 'SERVER')->orderBy('id')->get()->getRowArray() ?? throw ApiException::notFound('APP_NOT_FOUND', 'Server application not configured');
     }
 
-    /** Authenticate an installation by its license token (FR-UC-SRV-11). */
+    /**
+     * Authenticate an installation by its license token (FR-UC-SRV-11) or by the installation
+     * key issued at registration (`Authorization: Installation <key>`, WS-CORE-SYSUPDATE §10).
+     */
     public function installationFromLicense(?string $header): array
     {
+        if ($header !== null && str_starts_with($header, 'Installation ')) {
+            return (new ServerAutoUpdateService())->installationFromKey($header);
+        }
         $token = $header !== null && str_starts_with($header, 'License ') ? substr($header, 8) : null;
         if ($token === null) {
-            throw new ApiException('LICENSE_TOKEN_INVALID', 'Installation license token required (Authorization: License …)', 401);
+            throw new ApiException('LICENSE_TOKEN_INVALID', 'Installation key or license token required (Authorization: Installation … or License …)', 401);
         }
         try {
             $lic = service('trustChain')->verifyLicenseToken($token);
@@ -75,6 +81,28 @@ class ServerUpdateService
         if (isset($in['channel'])) {
             $set['channel'] = strtoupper(substr((string) $in['channel'], 0, 32));
         }
+        // WS-CORE-SYSUPDATE FR-SU-LINK-03 heartbeat: runtime versions, disk, policy mode, health (no business data).
+        if (isset($in['node_version']) && is_string($in['node_version'])) {
+            $set['node_version'] = substr($in['node_version'], 0, 32);
+        }
+        if (isset($in['mariadb_version']) && is_string($in['mariadb_version'])) {
+            $set['db_version'] = substr($in['mariadb_version'], 0, 64);
+        }
+        if (isset($in['disk_free_mb']) && is_numeric($in['disk_free_mb'])) {
+            $set['disk_free_mb'] = max(0, (int) $in['disk_free_mb']);
+        }
+        if (isset($in['policy_mode']) && in_array(strtoupper((string) $in['policy_mode']), ServerAutoUpdateService::MODES, true)) {
+            $set['policy_mode'] = strtoupper((string) $in['policy_mode']);
+        }
+        if (isset($in['health']) && in_array(strtoupper((string) $in['health']), ['OK', 'DEGRADED', 'DOWN'], true)) {
+            $set['health'] = strtoupper((string) $in['health']);
+        }
+        if (array_key_exists('offline_mode', $in)) {
+            $set['offline_mode'] = $in['offline_mode'] ? 1 : 0;
+        }
+        if (isset($in['last_run']['result']) && in_array(strtoupper((string) $in['last_run']['result']), ['SUCCEEDED', 'ROLLED_BACK', 'FAILED', 'CANCELLED'], true)) {
+            $set['last_run_status'] = strtoupper((string) $in['last_run']['result']);
+        }
         if (isset($in['mode']) && in_array(strtoupper((string) $in['mode']), ['MANAGED', 'SELF_HOSTED', 'AIR_GAPPED'], true)) {
             $set['mode'] = strtoupper((string) $in['mode']);
         }
@@ -97,10 +125,18 @@ class ServerUpdateService
         foreach (array_slice($events, 0, 100) as $e) {
             $id   = (string) ($e['event_id'] ?? '');
             $type = (string) ($e['type'] ?? '');
-            if ($id === '' || ! in_array($type, ['started', 'completed', 'failed', 'rolled_back'], true) || $db->table('server_update_events')->where('event_id', $id)->countAllResults()) {
+            if ($id === '' || ! in_array($type, ['started', 'completed', 'failed', 'rolled_back', 'scheduled', 'postponed', 'skipped'], true) || $db->table('server_update_events')->where('event_id', $id)->countAllResults()) {
                 continue;
             }
             $release = isset($e['to']) ? $db->table('releases')->where('application_id', $this->serverApp()['id'])->where('version', (string) $e['to'])->get()->getRowArray() : null;
+            (new ServerAutoUpdateService())->onEvent($inst, $release, $type, isset($e['step']) ? substr((string) $e['step'], 0, 32) : (isset($e['reason']) ? substr((string) $e['reason'], 0, 200) : null));
+            if (in_array($type, ['scheduled', 'postponed', 'skipped'], true)) {
+                // Plan decisions (FR-SU-PLAN-02) are recorded on the plan, not as runs.
+                $db->table('server_update_events')->insert(['event_id' => $id, 'installation_id' => $inst['id'], 'release_id' => $release['id'] ?? null, 'type' => $type, 'from_version' => $e['from'] ?? null, 'to_version' => $e['to'] ?? null, 'occurred_at' => isset($e['at']) && strtotime((string) $e['at']) ? gmdate('Y-m-d H:i:s', strtotime((string) $e['at'])) : Catalog::now()]);
+                $n++;
+
+                continue;
+            }
             $db->table('server_update_events')->insert([
                 'event_id' => $id, 'installation_id' => $inst['id'], 'release_id' => $release['id'] ?? null, 'type' => $type,
                 'step' => isset($e['step']) ? substr((string) $e['step'], 0, 32) : null, 'error_code' => isset($e['error_code']) ? substr((string) $e['error_code'], 0, 64) : null,
@@ -135,8 +171,11 @@ class ServerUpdateService
             throw new ApiException('LICENSE_TOKEN_INVALID', "License does not cover the {$edition} edition", 403);
         }
         $channel = Catalog::channel((string) ($q['channel'] ?? $inst['channel'] ?? 'STABLE'), (int) $app['id']);
-        if (! $channel['is_public'] && ! in_array($channel['code'], ['BETA'], true)) {
+        if (! $channel['is_public'] && ! in_array($channel['code'], ['BETA', 'LTS'], true)) {
             $channel = Catalog::channel('STABLE');
+        }
+        if ($channel['code'] === 'LTS' && strtoupper((string) $inst['license']['edition']) !== 'ENTERPRISE') {
+            $channel = Catalog::channel('STABLE'); // lts is Enterprise only (FR-SU-LINK-02)
         }
         db_connect()->table('server_installations')->where('id', $inst['id'])->update(['last_check_at' => Catalog::now(), 'version' => $version, 'build' => (int) ($q['build'] ?? $inst['build']), 'channel' => $channel['code']]);
 
@@ -189,6 +228,27 @@ class ServerUpdateService
                 $package = ['id' => $pkgRow['public_id'], 'revision_id' => $pkgRow['rev_public_id'], 'edition' => strtolower($pkgRow['edition']), 'scope' => $pkgRow['scope'], 'file_name' => $pkgRow['file_name'], 'size' => (int) $pkgRow['size_bytes'], 'sha256' => $pkgRow['sha256'], 'package_json' => $meta['package_json'] ?? null, 'download_grant' => $grant['grant']];
             }
         }
+        // FR-DL-MIN-01: below the channel minimum → REQUIRED notice (never a remote disable).
+        $min        = (new MinimumVersionService())->channelMinimum((int) $app['id'], (int) $channel['id'], null);
+        $belowMin   = false;
+        try {
+            $belowMin = $min !== null && Semver::lt($version, (string) $min['minimum_version']);
+        } catch (\Throwable) {
+        }
+        if ($belowMin && $offered && Semver::compare($offered['version'], $version) > 0 && in_array($status, ['UPDATE_AVAILABLE', 'UPDATE_RECOMMENDED'], true)) {
+            $status = 'UPDATE_REQUIRED';
+        }
+        $withdrawn = $db->table('releases')->select('public_id, version, withdrawn_at')->where('application_id', $app['id'])->where('channel_id', $channel['id'])->where('status', 'WITHDRAWN')->orderBy('version_sort', 'DESC')->limit(20)->get()->getResultArray();
+        $rollbackAsked = $curRow && $curRow['status'] === 'WITHDRAWN'
+            && $db->table('server_update_plans')->where('installation_id', $inst['id'])->where('release_id', $curRow['id'])->where('rollback_requested', 1)->countAllResults() > 0;
+        $ringInfo = null;
+        if ($offered && Semver::compare($offered['version'], $version) > 0) {
+            $policy   = (new ServerAutoUpdateService())->policyRow((int) $inst['id']);
+            $ringNo   = ServerRingService::ringOf($inst, $policy['ring'] ?? null);
+            $ringSvc  = new ServerRingService();
+            $openTs   = $ringSvc->openAt($offered, $ringNo);
+            $ringInfo = ['ring' => $ringNo, 'ring_name' => ServerRingService::RINGS[$ringNo], 'ring_open' => $ringSvc->isOpen($offered, $ringNo), 'ring_open_at' => $openTs === null ? null : gmdate('Y-m-d\TH:i:s\Z', $openTs)];
+        }
         $switch = $this->editionSwitch($inst, $q, $edition, $curRow, $resolver);
         $meta = $offered ? $db->table('release_server_meta')->where('release_id', $offered['id'])->get()->getRowArray() : null;
         $cl   = $offered ? (new ChangelogService())->get((int) $offered['id']) : null;
@@ -225,6 +285,12 @@ class ServerUpdateService
             'release_manifest_url' => $offered ? '/api/v1/releases/' . $offered['public_id'] . '/manifest' : null,
             'fleet'              => $fleet,
             'edition_switch'     => $switch,
+            'severity'           => $offered ? ServerRingService::severity($offered) : null,
+            'minimum_supported_version' => $min['minimum_version'] ?? null,
+            'below_minimum'      => $belowMin,
+            'rollout'            => $ringInfo,
+            'withdrawn_releases' => array_map(static fn ($w) => ['release_id' => $w['public_id'], 'version' => $w['version'], 'withdrawn_at' => Catalog::iso($w['withdrawn_at'])], $withdrawn),
+            'rollback_requested' => $rollbackAsked,
             'issued_at'          => gmdate('Y-m-d\TH:i:s\Z'),
             'expires_at'         => gmdate('Y-m-d\TH:i:s\Z', time() + $cfg->updateResponseTtl),
         ];
@@ -427,6 +493,7 @@ class ServerUpdateService
             'editions' => $editions, 'urgency' => $c['urgency'], 'deadline' => Catalog::iso($c['deadline']),
             'notes_url' => rtrim(config('UpdateCenter')->publicBaseUrl, '/') . '/apps/' . $app['slug'] . '/releases/' . $release['version'],
             'admin_notice' => $meta['admin_notice'] ?? null, 'advisory' => $meta['advisory'] ?? null, 'reminder' => $reminder,
+            'severity' => ServerRingService::severity($release, $meta ?: null),
         ];
         $sent = 0;
         foreach ($this->eligible($c, $release) as $inst) {
@@ -434,11 +501,16 @@ class ServerUpdateService
                 Queue::push(SendWebhookJob::class, ['url' => $inst['webhook_url'], 'event' => $event, 'payload' => $payload + ['installation_id' => $inst['installation_id']], 'secret_ref' => 'UC_APP_SECRET'], 'webhooks', 0, 8);
                 $db->table('campaign_deliveries')->insert(['campaign_id' => $c['id'], 'installation_id' => $inst['id'], 'channel' => 'webhook', 'status' => 'QUEUED', 'sent_at' => Catalog::now(), 'created_at' => Catalog::now(), 'updated_at' => Catalog::now()]);
             }
-            // Email the opted-in license contact — always for installations without a webhook (WF-C22 step 3).
-            if ($inst['notify_contact'] && (in_array('email', $channels, true) || ! $inst['webhook_url'] || in_array($c['urgency'], ['MANDATORY', 'CRITICAL'], true))) {
-                $subject = ($c['urgency'] === 'CRITICAL' ? '[Security] ' : '') . "WorkSuite {$release['version']} is available for your installation";
-                service('notifier')->email($inst['notify_contact'], $subject, "A WorkSuite Server update ({$release['version']}, " . strtolower($c['urgency']) . ") is available.\n\nOpen Admin Center › System › Updates on your server to review and install it.\nRelease notes: {$payload['notes_url']}" . ($c['deadline'] ? "\nSupport deadline: " . Catalog::iso($c['deadline']) : ''));
-                $db->table('campaign_deliveries')->insert(['campaign_id' => $c['id'], 'installation_id' => $inst['id'], 'channel' => 'email', 'status' => 'QUEUED', 'sent_at' => Catalog::now(), 'created_at' => Catalog::now(), 'updated_at' => Catalog::now()]);
+            // Email the opted-in license contact and the registered admin contacts (FR-DL-NOTIFY-01) —
+            // always for installations without a webhook (WF-C22 step 3). Deduplicated (Q4).
+            $to = array_values(array_unique(array_filter(array_merge([$inst['notify_contact'] ?? null], json_decode((string) ($inst['admin_contacts'] ?? '[]'), true) ?: []))));
+            if ($to !== [] && (in_array('email', $channels, true) || ! $inst['webhook_url'] || in_array($c['urgency'], ['MANDATORY', 'CRITICAL'], true))) {
+                $security = $c['urgency'] === 'CRITICAL' || in_array($payload['severity'], ServerRingService::SECURITY_SEVERITIES, true);
+                $subject  = ($security ? '[Security] ' : '') . ($reminder ? 'Reminder: ' : '') . "WorkSuite {$release['version']} is available for your installation";
+                foreach ($to as $addr) {
+                    service('notifier')->email($addr, $subject, "A WorkSuite Server update ({$release['version']}, " . strtolower($c['urgency']) . ") is available.\n\nOpen Admin Center › System › Updates on your server to review and install it.\nRelease notes: {$payload['notes_url']}" . ($c['deadline'] ? "\nSupport deadline: " . Catalog::iso($c['deadline']) : ''));
+                    $db->table('campaign_deliveries')->insert(['campaign_id' => $c['id'], 'installation_id' => $inst['id'], 'channel' => 'email', 'status' => 'QUEUED', 'sent_at' => Catalog::now(), 'created_at' => Catalog::now(), 'updated_at' => Catalog::now()]);
+                }
             }
             $sent++;
         }
@@ -455,11 +527,11 @@ class ServerUpdateService
         return $sent;
     }
 
-    public function notifyWithdrawn(array $release, string $reason): void
+    public function notifyWithdrawn(array $release, string $reason, bool $rollbackRequested = false): void
     {
         $app = Catalog::appById((int) $release['application_id']);
         foreach (db_connect()->table('server_installations')->where('webhook_url IS NOT NULL')->get()->getResultArray() as $inst) {
-            Queue::push(SendWebhookJob::class, ['url' => $inst['webhook_url'], 'event' => 'server.release.withdrawn', 'payload' => ['app' => $app['app_identifier'], 'version' => $release['version'], 'release_id' => $release['public_id'], 'reason' => $reason, 'installation_id' => $inst['installation_id']], 'secret_ref' => 'UC_APP_SECRET'], 'webhooks', 0, 8);
+            Queue::push(SendWebhookJob::class, ['url' => $inst['webhook_url'], 'event' => 'server.release.withdrawn', 'payload' => ['app' => $app['app_identifier'], 'version' => $release['version'], 'release_id' => $release['public_id'], 'reason' => $reason, 'installation_id' => $inst['installation_id'], 'rollback_requested' => $rollbackRequested && $inst['version'] === $release['version']], 'secret_ref' => 'UC_APP_SECRET'], 'webhooks', 0, 8);
         }
     }
 
@@ -480,6 +552,10 @@ class ServerUpdateService
         foreach ($db->table('notification_campaigns c')->select('c.*')->join('releases r', 'r.id = c.release_id')->where('r.status', 'PUBLISHED')->where('c.status', 'SENT')->get()->getResultArray() as $c) {
             [$hours, $max] = self::REMINDERS[$c['urgency']] ?? [0, 0];
             $release       = Catalog::releaseById((int) $c['release_id']);
+            $sevMeta       = $db->table('release_server_meta')->select('severity')->where('release_id', $release['id'])->get()->getRow('severity');
+            if (in_array(strtoupper((string) $sevMeta), ServerRingService::SECURITY_SEVERITIES, true)) {
+                [$hours, $max] = [168, 1000]; // FR-DL-NOTIFY-01: reminder every 7 days until applied
+            }
             if ($hours > 0 && (int) $c['reminders_sent'] < $max && $c['last_reminder_at'] && strtotime($c['last_reminder_at'] . ' UTC') <= time() - $hours * 3600) {
                 $n     = $this->send($release, true);
                 $out[] = "reminded {$n} installations for {$release['version']}";
@@ -562,16 +638,69 @@ class ServerUpdateService
             if (! empty($filters['status'])) {
                 $b->where('last_run_status', strtoupper((string) $filters['status']));
             }
+            if (! empty($filters['version'])) {
+                $b->where('version', (string) $filters['version']);
+            }
+            if (! empty($filters['q'])) {
+                $b->groupStart()->like('name', (string) $filters['q'])->orLike('installation_id', (string) $filters['q'])->groupEnd();
+            }
+            // DL-4 segments.
+            switch ((string) ($filters['segment'] ?? '')) {
+                case 'stale':
+                    $b->where('offline_mode', 0)->groupStart()->where('last_report_at IS NULL')->orWhere('last_report_at <', gmdate('Y-m-d H:i:s', time() - 86400))->groupEnd();
+                    break;
+                case 'on_hold':
+                    $b->where('id IN (SELECT installation_id FROM ' . $db->prefixTable('server_update_plans') . " WHERE state = 'HELD' AND state_reason LIKE 'Rolled back%')", null, false);
+                    break;
+                case 'offline':
+                    $b->groupStart()->where('offline_mode', 1)->orWhere('mode', 'AIR_GAPPED')->groupEnd();
+                    break;
+            }
 
             return $b;
         };
-        $rows = $q()->orderBy('last_report_at', 'DESC')->limit($limit, $offset)->get()->getResultArray();
+        $belowOnly = ($filters['segment'] ?? '') === 'below_minimum';
+        $rows      = $belowOnly ? $q()->orderBy('last_report_at', 'DESC')->get()->getResultArray() : $q()->orderBy('last_report_at', 'DESC')->limit($limit, $offset)->get()->getResultArray();
+        $policies = array_column($db->table('server_auto_update_policies')->select('installation_id, mode, ring, version')->get()->getResultArray(), null, 'installation_id');
+        $minSvc   = new MinimumVersionService();
+        $app      = $this->serverApp();
+        $mins     = [];
+        $data     = [];
+        foreach ($rows as $r) {
+            $pol  = $policies[$r['id']] ?? null;
+            $ring = ServerRingService::ringOf($r, $pol['ring'] ?? null);
+            $ch   = strtoupper((string) ($r['channel'] ?: 'STABLE'));
+            if (! array_key_exists($ch, $mins)) {
+                try {
+                    $mins[$ch] = $minSvc->channelMinimum((int) $app['id'], (int) Catalog::channel($ch, (int) $app['id'])['id'], null)['minimum_version'] ?? null;
+                } catch (\Throwable) {
+                    $mins[$ch] = null;
+                }
+            }
+            $below = false;
+            try {
+                $below = $mins[$ch] !== null && $r['version'] && Semver::lt($r['version'], $mins[$ch]);
+            } catch (\Throwable) {
+            }
+            $data[] = [
+                'installation_id' => $r['installation_id'], 'name' => $r['name'], 'edition' => $r['edition'], 'version' => $r['version'], 'build' => (int) $r['build'],
+                'channel' => $r['channel'], 'mode' => $r['mode'], 'support_state' => $r['support_state'], 'last_report_at' => Catalog::iso($r['last_report_at']),
+                'last_check_at' => Catalog::iso($r['last_check_at']), 'last_run_status' => $r['last_run_status'], 'php_version' => $r['php_version'], 'db_version' => $r['db_version'],
+                'node_version' => $r['node_version'] ?? null, 'disk_free_mb' => isset($r['disk_free_mb']) ? (int) $r['disk_free_mb'] : null, 'health' => $r['health'] ?? null,
+                'offline_mode' => (bool) ($r['offline_mode'] ?? false), 'policy_mode' => $pol['mode'] ?? $r['policy_mode'] ?? null, 'policy_version' => $pol ? (int) $pol['version'] : null,
+                'ring' => $ring, 'ring_name' => ServerRingService::RINGS[$ring], 'ring_override' => $r['ring'] !== null, 'below_minimum' => $below, 'linked' => ! empty($r['key_hash']),
+                'registered_at' => Catalog::iso($r['registered_at'] ?? null),
+            ];
+        }
 
-        return ['data' => array_map(static fn ($r) => [
-            'installation_id' => $r['installation_id'], 'name' => $r['name'], 'edition' => $r['edition'], 'version' => $r['version'], 'build' => (int) $r['build'],
-            'channel' => $r['channel'], 'mode' => $r['mode'], 'support_state' => $r['support_state'], 'last_report_at' => Catalog::iso($r['last_report_at']),
-            'last_check_at' => Catalog::iso($r['last_check_at']), 'last_run_status' => $r['last_run_status'], 'php_version' => $r['php_version'], 'db_version' => $r['db_version'],
-        ], $rows), 'total' => $q()->countAllResults()];
+        if ($belowOnly) {
+            // Minimums are SemVer comparisons per channel, so this segment is filtered here.
+            $data = array_values(array_filter($data, static fn ($d) => $d['below_minimum']));
+
+            return ['data' => array_slice($data, $offset, $limit), 'total' => count($data)];
+        }
+
+        return ['data' => $data, 'total' => $q()->countAllResults()];
     }
 
     public function stats(): array
@@ -604,6 +733,8 @@ class ServerUpdateService
             'rolled_back'    => $runs('rolled_back'),
             'unsupported'    => $db->table('server_installations')->where('support_state', 'UNSUPPORTED')->countAllResults(),
             'by_mode'        => array_column($db->table('server_installations')->select('mode, COUNT(*) AS c')->groupBy('mode')->get()->getResultArray(), 'c', 'mode') ?: new \stdClass(),
+            'segments'       => (new ServerReleaseConsoleService())->fleetCounts(),
+            'adoption'       => (new ServerReleaseConsoleService())->adoption(),
         ];
     }
 }

@@ -9,7 +9,7 @@
  *
  *   GET  /health  → {ok, detail}
  *   GET  /keys    → {keys: [{key_id, public_key}]}
- *   POST /sign    → {kind: RELEASE|CHANNEL|ROTATION|OS_MANIFEST, document, evidence}
+ *   POST /sign    → {kind: RELEASE|CHANNEL|CHECKSUMS|ROTATION|OS_MANIFEST, document, evidence}
  *                   200 {document} | 409 {reasons} | 400
  *
  * Environment:

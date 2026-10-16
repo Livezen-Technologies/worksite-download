@@ -28,6 +28,19 @@ services:
     build: { context: ., dockerfile: docker/web.Dockerfile }
     ports: ["8088:80"]
     depends_on: [update-api]
+    # The APT/DNF repositories (worksuite-desktop#351): nginx serves linux-repos/public at /apt and /rpm, read-only.
+    volumes: ["linux-repos:/srv/linux-repos:ro"]
+
+  # Publishes .deb/.rpm builds into that volume (docs/linux-repositories.md):
+  #   docker compose --profile linux-repo run --rm linux-repo --channel beta --root /srv/linux-repos /incoming/<file>
+  # with ./incoming holding the packages and WORKSUITE_REPO_GPG_PRIVATE_KEY (+ _PASSPHRASE) in the environment.
+  linux-repo:
+    build: { context: ., dockerfile: docker/linux-repo.Dockerfile }
+    profiles: ["linux-repo"]
+    environment:
+      WORKSUITE_REPO_GPG_PRIVATE_KEY: ${WORKSUITE_REPO_GPG_PRIVATE_KEY:-}
+      WORKSUITE_REPO_GPG_PASSPHRASE: ${WORKSUITE_REPO_GPG_PASSPHRASE:-}
+    volumes: ["linux-repos:/srv/linux-repos", "./incoming:/incoming:ro"]
 
   update-api:
     build: { context: ., dockerfile: docker/api.Dockerfile, target: base }
@@ -94,6 +107,7 @@ volumes:
   mariadb: {}
   storage: {}
   uploads: {}
+  linux-repos: {}
 
 secrets:
   release_key:

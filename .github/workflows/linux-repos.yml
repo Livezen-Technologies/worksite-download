@@ -1,0 +1,145 @@
+# Adds a published WorkSuite Desktop release's .deb and .rpm files to the WorkSuite APT and DNF repositories
+# (worksuite-desktop#351; docs/linux-repositories.md). Run it once the release is PUBLISHED in the Update Center on
+# that channel — the same moment its appcast and update answers change — either by hand (Actions › Linux
+# repositories › Run workflow) or by a repository_dispatch:
+#
+#   gh api repos/Livezen-Technologies/worksite-download/dispatches -f event_type=desktop-release-published \
+#     -F 'client_payload[version]=0.2.249' -F 'client_payload[channel]=stable'
+#
+# The packages come from the Update Center itself (its download resolver), each checked against the SHA-256 the
+# Update Center sends with it, so only what was approved and published goes into the repositories. The repository
+# tree is copied from the server, updated by scripts/publish-linux-repos.sh, and copied back: new packages first,
+# then the signed indexes, so a client never sees an index naming a file that is not there yet.
+#
+# Secrets (environment "linux-repositories"):
+#   WORKSUITE_REPO_GPG_PRIVATE_KEY   the repository signing key, ASCII-armoured (a subkey; see the docs)
+#   WORKSUITE_REPO_GPG_PASSPHRASE    its passphrase
+#   LINUX_REPO_SSH_KEY               a deploy key allowed to rsync LINUX_REPO_PATH on the server, and nothing else
+#   LINUX_REPO_SSH_KNOWN_HOSTS       the server's host key line(s)
+#   LINUX_REPO_SSH_TARGET            user@host
+#   UC_DOWNLOAD_TOKEN                optional: a bearer token that may download from non-public channels (Dev)
+# Variables: LINUX_REPO_PATH (default /srv/linux-repos).
+name: Linux repositories
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: WorkSuite Desktop version, as published (e.g. 0.2.249)
+        required: true
+      channel:
+        description: Channel it was published on
+        type: choice
+        options: [stable, beta, dev]
+        default: stable
+      dry_run:
+        description: Only fetch and check the packages and say what would change
+        type: boolean
+        default: true
+  repository_dispatch:
+    types: [desktop-release-published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-repos
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: linux-repositories
+    env:
+      VERSION: ${{ inputs.version || github.event.client_payload.version }}
+      CHANNEL: ${{ inputs.channel || github.event.client_payload.channel || 'stable' }}
+      DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '1' || '0' }}
+      UC_URL: https://download.worksuitecloud.com
+      REPO_PATH: ${{ vars.LINUX_REPO_PATH || '/srv/linux-repos' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the inputs
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::bad version '$VERSION'"; exit 1; }
+          case "$CHANNEL" in stable|beta|dev) ;; *) echo "::error::bad channel '$CHANNEL'"; exit 1 ;; esac
+
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends reprepro createrepo-c rpm rsync
+
+      - name: Fetch the published packages from the Update Center
+        env:
+          UC_DOWNLOAD_TOKEN: ${{ secrets.UC_DOWNLOAD_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming
+          auth=()
+          if [ -n "${UC_DOWNLOAD_TOKEN:-}" ]; then auth=(-H "Authorization: Bearer $UC_DOWNLOAD_TOKEN"); fi
+          got=0
+          for arch in x64 arm64; do
+            for type in deb rpm; do
+              url="$UC_URL/download/desktop/$CHANNEL/$VERSION/linux/$arch/$type"
+              if ! headers=$(curl -fsS -o /dev/null -D - "${auth[@]}" "$url"); then echo "::notice::no $arch $type in $VERSION ($CHANNEL)"; continue; fi
+              header() { printf '%s\n' "$headers" | tr -d '\r' | awk -v k="$1" 'tolower($1) == tolower(k ":") { print $2 }' | tail -n 1; }
+              [ "$(header X-WorkSuite-Release)" = "$VERSION" ] || { echo "::error::$url resolved to $(header X-WorkSuite-Release), not $VERSION"; exit 1; }
+              sha=$(header X-WorkSuite-SHA256)
+              [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::$url sent no SHA-256"; exit 1; }
+              case "$type/$arch" in deb/x64) name="WorkSuite-$VERSION-amd64.deb" ;; deb/arm64) name="WorkSuite-$VERSION-arm64.deb" ;; rpm/x64) name="WorkSuite-$VERSION-x86_64.rpm" ;; rpm/arm64) name="WorkSuite-$VERSION-aarch64.rpm" ;; esac
+              curl -fsSL -o "incoming/$name" "$(header Location)"
+              echo "$sha  incoming/$name" | sha256sum -c -
+              got=$((got + 1))
+            done
+          done
+          [ "$got" -gt 0 ] || { echo "::error::WorkSuite Desktop $VERSION ($CHANNEL) has no .deb or .rpm in the Update Center"; exit 1; }
+          ls -l incoming
+
+      - name: Dry run
+        if: env.DRY_RUN == '1'
+        run: scripts/publish-linux-repos.sh --dry-run --channel "$CHANNEL" --root "$RUNNER_TEMP/linux-repos" incoming/*
+
+      - name: Copy the repository tree from the server
+        if: env.DRY_RUN != '1'
+        env:
+          SSH_KEY: ${{ secrets.LINUX_REPO_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.LINUX_REPO_SSH_KNOWN_HOSTS }}
+          TARGET: ${{ secrets.LINUX_REPO_SSH_TARGET }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/linux-repo && chmod 600 ~/.ssh/linux-repo
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          echo "RSYNC_RSH=ssh -i $HOME/.ssh/linux-repo -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          mkdir -p repo
+          RSYNC_RSH="ssh -i $HOME/.ssh/linux-repo -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
+            rsync -a --exclude .publish.lock "$TARGET:$REPO_PATH/" repo/
+
+      - name: Add the packages and sign
+        if: env.DRY_RUN != '1'
+        env:
+          WORKSUITE_REPO_GPG_PRIVATE_KEY: ${{ secrets.WORKSUITE_REPO_GPG_PRIVATE_KEY }}
+          WORKSUITE_REPO_GPG_PASSPHRASE: ${{ secrets.WORKSUITE_REPO_GPG_PASSPHRASE }}
+        run: scripts/publish-linux-repos.sh --channel "$CHANNEL" --root repo incoming/*
+
+      - name: Copy it back (packages first, then the signed indexes)
+        if: env.DRY_RUN != '1'
+        run: |
+          set -euo pipefail
+          rsync -a --exclude 'dists/' --exclude 'repodata/' --exclude .publish.lock repo/ "$TARGET:$REPO_PATH/"
+          rsync -a --delay-updates --delete --exclude .publish.lock repo/ "$TARGET:$REPO_PATH/"
+
+      - name: Check what clients see
+        if: env.DRY_RUN != '1'
+        run: |
+          set -euo pipefail
+          curl -fsS "$UC_URL/apt/dists/$CHANNEL/InRelease" -o InRelease && gpgv --keyring repo/public/apt/worksuite.gpg InRelease
+          if [ -s "repo/public/rpm/$CHANNEL/repodata/repomd.xml" ]; then
+            curl -fsS "$UC_URL/rpm/$CHANNEL/repodata/repomd.xml" -o repomd.xml
+            curl -fsS "$UC_URL/rpm/$CHANNEL/repodata/repomd.xml.asc" -o repomd.xml.asc
+            gpgv --keyring repo/public/apt/worksuite.gpg repomd.xml.asc repomd.xml
+          fi
+
+      # The signing key only ever lived in the script's temporary GNUPGHOME, which it deletes on exit.
+      - name: Forget the deploy key
+        if: always()
+        run: rm -f ~/.ssh/linux-repo

@@ -27,7 +27,7 @@ class PackageService
         $platform = strtolower((string) ($in['platform'] ?? ''));
         $arch     = strtolower((string) ($in['architecture'] ?? $in['arch'] ?? ''));
         $type     = strtolower((string) ($in['package_type'] ?? $in['type'] ?? ''));
-        $edition  = strtoupper((string) ($in['edition'] ?? ''));
+        $edition  = ServerReleaseConsoleService::normalizeEdition((string) ($in['edition'] ?? '')); // "professional" = FREE
         $fileName = basename(str_replace('\\', '/', (string) ($in['file_name'] ?? '')));
         $size     = (int) ($in['size'] ?? 0);
         $protocol = (string) ($in['protocol'] ?? 'tus');
@@ -38,7 +38,7 @@ class PackageService
             $arch     = 'any';
             $type     = 'zip';
             if (! in_array($edition, self::EDITIONS, true)) {
-                throw ApiException::validation(['edition' => 'Select Free, Business, Enterprise or All editions before uploading']);
+                throw ApiException::validation(['edition' => 'Select Professional (Free), Business, Enterprise or All editions before uploading']);
             }
             if ($size > $cfg->serverZipMaxBytes) {
                 throw ApiException::validation(['size' => 'Server packages are limited to 2 GB']);
