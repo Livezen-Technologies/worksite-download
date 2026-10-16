@@ -4,7 +4,7 @@
 //
 // A throwaway signing key is generated in a temporary GNUPGHOME for each run and deleted afterwards; no key is
 // ever read from or written to the repository. reprepro and createrepo_c are replaced by the small fakes in
-// scripts/tests/fakes (same list output, same SignWith hook call), so the signing, idempotency and refusal logic run
+// scripts/tests/fakes (rpm answers from the file name; same list output, same SignWith hook call), so the signing, idempotency and refusal logic run
 // everywhere. The one test that needs the real tools runs only where both are installed (CI installs them).
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -49,7 +49,7 @@ function makeDeb(dir, version, arch = 'amd64', pkg = 'worksuite') {
   mkdirSync(join(tree, 'DEBIAN'), { recursive: true });
   mkdirSync(join(tree, 'opt', 'WorkSuite'), { recursive: true });
   writeFileSync(join(tree, 'opt', 'WorkSuite', 'version'), `${version}\n`);
-  writeFileSync(join(tree, 'DEBIAN', 'control'), `Package: ${pkg}\nVersion: ${version}\nArchitecture: ${arch}\nMaintainer: Livezen Technologies <noreply@worksuite.lk>\nDescription: test package\n`);
+  writeFileSync(join(tree, 'DEBIAN', 'control'), `Package: ${pkg}\nVersion: ${version}\nSection: editors\nPriority: optional\nArchitecture: ${arch}\nMaintainer: Livezen Technologies <noreply@worksuite.lk>\nDescription: test package\n`);
   const out = join(dir, `WorkSuite-${version}-${arch}.deb`.replace('WorkSuite', pkg === 'worksuite' ? 'WorkSuite' : pkg));
   execFileSync('dpkg-deb', ['--build', '--root-owner-group', tree, out], { stdio: 'ignore' });
   return out;

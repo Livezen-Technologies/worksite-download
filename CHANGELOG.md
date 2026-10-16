@@ -36,6 +36,11 @@ switch (#11).
 
 ### Fixed
 
+- **The Linux repositories script test on CI.** The tests' fake `.rpm` files
+  were refused where the real `rpm` is installed (GitHub's Ubuntu runners), and
+  the real reprepro skipped the test `.deb` for having no `Section`. The tests
+  now put a fake `rpm` on the path and give the test package a section; the
+  script itself is unchanged.
 - **The installer on Ubuntu 26.04.** The ondrej PPA has no builds for 26.04
   (they moved to packages.sury.org/php), so `apt-get update` failed at step 4.
   From Ubuntu 26 the installer adds the sury repository instead. Found by the

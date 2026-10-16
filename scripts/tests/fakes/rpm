@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# A fake `rpm` for the tests. The test packages are not real RPMs, so `rpm -qp --qf '%{NAME}'|'%{ARCH}' FILE`
+# answers from the file name (WorkSuite-<version>-<arch>.rpm). Without it, a host with the real rpm (GitHub's
+# Ubuntu runners have it) refuses the fake files.
+qf='' f=''
+while [ $# -gt 0 ]; do
+  case "$1" in --qf) qf=$2; shift ;; -*) ;; *) f=$1 ;; esac
+  shift
+done
+[ -f "$f" ] || { echo "error: open of $f failed" >&2; exit 1; }
+n=$(basename -- "$f")
+case "$n" in WorkSuite-*.rpm|worksuite-*.rpm) ;; *) echo "error: $f: not an rpm package" >&2; exit 1 ;; esac
+case "$qf" in
+  '%{NAME}') printf worksuite ;;
+  '%{ARCH}') a=${n%.rpm}; printf '%s' "${a##*[-.]}" ;;
+  *) echo "fake rpm: unsupported --qf $qf" >&2; exit 1 ;;
+esac
