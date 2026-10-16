@@ -57,6 +57,7 @@ class CatalogSeeder extends Seeder
             ['WorkSuite Quick Support', 'quick-support', 'lk.worksuite.quicksupport', 'DESKTOP', 'Let Livezen support connect to your computer securely for a single session.', [['windows', 'x64', ['exe'], 1, 'exe', null], ['macos', 'arm64', ['dmg'], 1, 'dmg', null], ['macos', 'x64', ['dmg'], 0, 'dmg', null]], 3],
             ['WorkSuite Sync Agent', 'sync-agent', 'lk.worksuite.syncagent', 'DESKTOP', 'Background file sync for WorkSuite Drive.', [['windows', 'x64', ['msi'], 1, 'msi', null], ['macos', 'arm64', ['pkg'], 1, 'pkg', null], ['linux', 'x64', ['deb', 'rpm'], 1, 'deb', null]], 4],
             ['WorkSuite Server Agent', 'server-agent', 'lk.worksuite.serveragent', 'DESKTOP', 'Monitoring and update agent for WorkSuite servers.', [['linux', 'x64', ['deb', 'rpm'], 1, 'deb', null], ['linux', 'arm64', ['deb', 'rpm'], 0, 'deb', null]], 5],
+            ['WorkSuite OS', 'os', 'lk.worksuite.os', 'OS', 'WorkSuite OS — a Debian-based desktop operating system with the WorkSuite shell, signed automatic updates and central management.', [['os', 'amd64', ['iso', 'deb', 'sbom'], 1, 'iso', null], ['os', 'arm64', ['iso', 'deb', 'sbom'], 0, 'iso', null]], 7],
             ['WorkSuite Server (Web)', 'server', 'lk.worksuite.server', 'SERVER', 'The complete WorkSuite web system — Free, Business and Enterprise editions — for self-hosted installations.', [['server', 'any', ['zip'], 1, 'zip', null]], 6],
         ];
         foreach ($apps as [$name, $slug, $ident, $kind, $desc, $platforms, $sort]) {
@@ -131,6 +132,9 @@ class CatalogSeeder extends Seeder
 
     private static function requirements(string $kind): array
     {
+        if ($kind === 'OS') {
+            return ['os' => ['64-bit x86 (amd64) or ARM64 (arm64) PC with UEFI', '4 GB RAM (8 GB recommended)', '40 GB free disk space', 'Internet access for signed automatic updates']];
+        }
         if ($kind === 'SERVER') {
             return ['server' => \App\Database\ServerInstallGuide::REQUIREMENTS];
         }
@@ -144,6 +148,9 @@ class CatalogSeeder extends Seeder
 
     private static function installHelp(string $kind): array
     {
+        if ($kind === 'OS') {
+            return ['os' => "Download the **.iso** for your architecture, check it against the published **SHA-256**, write it to a USB stick (`sudo dd if=worksuite-os-*.iso of=/dev/sdX bs=4M status=progress`) and boot from it. Installed systems update themselves from this site."];
+        }
         if ($kind === 'SERVER') {
             return ['server' => \App\Database\ServerInstallGuide::GUIDE];
         }

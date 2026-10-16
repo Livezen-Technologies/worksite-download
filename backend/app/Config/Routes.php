@@ -9,7 +9,7 @@ use CodeIgniter\Router\RouteCollection;
  */
 $routes->setAutoRoute(false);
 
-foreach (['public', 'auth', 'desktop', 'admin', 'portal', 'server', 'bugtrace'] as $group) {
+foreach (['public', 'auth', 'desktop', 'admin', 'portal', 'server', 'bugtrace', 'os'] as $group) {
     $file = __DIR__ . '/Routes/' . $group . '.php';
     if (is_file($file)) {
         require $file;

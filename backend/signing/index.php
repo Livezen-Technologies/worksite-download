@@ -9,7 +9,7 @@
  *
  *   GET  /health  → {ok, detail}
  *   GET  /keys    → {keys: [{key_id, public_key}]}
- *   POST /sign    → {kind: RELEASE|CHANNEL|CHECKSUMS|ROTATION, document, evidence}
+ *   POST /sign    → {kind: RELEASE|CHANNEL|CHECKSUMS|ROTATION|OS_MANIFEST, document, evidence}
  *                   200 {document} | 409 {reasons} | 400
  *
  * Environment:
@@ -129,6 +129,8 @@ if ($reasons !== []) {
     auditLine(['event' => 'sign_refused', 'reasons' => $reasons] + $subject);
     respond(409, ['reasons' => $reasons]);
 }
-$signed = Ed25519::signDocument($req['document'], $keys, $keyId);
+$signed = $req['kind'] === 'OS_MANIFEST'
+    ? Ed25519::signFlat($req['document'], $keys, $keyId)
+    : Ed25519::signDocument($req['document'], $keys, $keyId);
 auditLine(['event' => 'signed', 'key_id' => $keyId, 'sha256' => hash('sha256', \App\Libraries\CanonicalJson::encode($signed))] + $subject);
 respond(200, ['document' => $signed]);

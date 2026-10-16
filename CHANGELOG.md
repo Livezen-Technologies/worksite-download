@@ -20,6 +20,14 @@ switch (#11).
 
 ### Added
 
+- **WorkSuite OS updates (§18)** — `os` product (amd64/arm64; rings
+  development = DEV/canary, pilot = BETA, stable), signed ring manifests at
+  `/os/manifests/{ring}/{arch}.json` in the OS's flat Ed25519 scheme (signing
+  service kind `OS_MANIFEST`), the APT repository from `publish.sh` at
+  `/os/apt/`, ISO/SHA-256/SBOM downloads and the public `/os` page, a CI
+  publish API (`os.publish`) and pause / resume / pull (with signed rollback
+  directive) / rollout / promote / emergency for release managers.
+
 - **Staging install test, recorded in the admin.** A release's Server metadata
   form now has *Staging install test* (Not reported / Running / Passed / Failed)
   and a report link or note. Until now only an API call could set it, so the
@@ -28,6 +36,11 @@ switch (#11).
 
 ### Fixed
 
+- **The Linux repositories script test on CI.** The tests' fake `.rpm` files
+  were refused where the real `rpm` is installed (GitHub's Ubuntu runners), and
+  the real reprepro skipped the test `.deb` for having no `Section`. The tests
+  now put a fake `rpm` on the path and give the test package a section; the
+  script itself is unchanged.
 - **The installer on Ubuntu 26.04.** The ondrej PPA has no builds for 26.04
   (they moved to packages.sury.org/php), so `apt-get update` failed at step 4.
   From Ubuntu 26 the installer adds the sury repository instead. Found by the

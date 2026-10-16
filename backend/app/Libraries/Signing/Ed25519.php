@@ -54,4 +54,40 @@ final class Ed25519
 
         return self::verify(CanonicalJson::encode($doc), Base64Url::decode($sig), $publicKeys[$kid]);
     }
+
+    /**
+     * WorkSuite OS manifest scheme (services/package-service/src/updates.ts verifyManifest):
+     * `signature: "<key_id>:<standard base64 Ed25519>"` over the canonical JSON of the
+     * document without `signature`; no separate key_id field.
+     *
+     * @param array<string, mixed> $doc
+     *
+     * @return array<string, mixed>
+     */
+    public static function signFlat(array $doc, KeyProviderInterface $keys, string $keyId): array
+    {
+        unset($doc['signature'], $doc['key_id']);
+        $doc['signature'] = $keyId . ':' . base64_encode($keys->sign($keyId, CanonicalJson::encode($doc)));
+
+        return $doc;
+    }
+
+    /**
+     * @param array<string, mixed>  $doc
+     * @param array<string, string> $publicKeys kid => raw public key
+     */
+    public static function verifyFlat(array $doc, array $publicKeys): bool
+    {
+        $sig = $doc['signature'] ?? null;
+        if (! is_string($sig) || ! str_contains($sig, ':')) {
+            return false;
+        }
+        [$kid, $b64] = explode(':', $sig, 2);
+        if (! isset($publicKeys[$kid])) {
+            return false;
+        }
+        unset($doc['signature']);
+
+        return self::verify(CanonicalJson::encode($doc), (string) base64_decode($b64, true), $publicKeys[$kid]);
+    }
 }

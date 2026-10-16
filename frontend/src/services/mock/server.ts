@@ -594,6 +594,15 @@ route('GET', '/changelog', (req) => {
     .map((r) => ({ ...toPublicRelease(r), changelog: r.changelog, app: { slug: r.app.slug, name: r.app.name } }));
   return paginate(rels, req.query);
 });
+route('GET', '/os/releases', () => ({
+  keys_url: '/api/v1/os/keys',
+  data: (['amd64', 'arm64'] as const).map((arch) => ({
+    version: '1.2.0', ring: 'stable', channel: 'STABLE', arch, release_type: 'SECURITY', state: 'active', published_at: '2026-10-01 09:00:00', notes: null,
+    iso: { file_name: `worksuite-os-1.2.0-${arch}.iso`, size_bytes: 2_400_000_000, sha256: 'a'.repeat(64), url: `/os/download/1.2.0/${arch}/worksuite-os-1.2.0-${arch}.iso`, sha256_url: `/os/download/1.2.0/${arch}/worksuite-os-1.2.0-${arch}.iso.sha256` },
+    sbom: { file_name: `worksuite-os-1.2.0-${arch}.sbom.spdx.json`, url: `/os/download/1.2.0/${arch}/worksuite-os-1.2.0-${arch}.sbom.spdx.json` },
+    apt: { url: '/os/apt', suite: 'trixie-stable', keyring_url: '/os/apt/worksuite-archive-keyring.gpg' },
+  })),
+}));
 route('GET', '/channels', () => ({ data: state.channels.map((c) => ({ code: c.code, name: c.name, description: c.description, is_public: c.is_public, allow_direct_download: c.allow_direct_download })) }));
 route('POST', '/subscriptions', (req) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(req.body?.email ?? '')) throw new MockHttpError(422, 'VALIDATION_FAILED', 'Check the highlighted fields', { email: 'Enter a valid email address' });

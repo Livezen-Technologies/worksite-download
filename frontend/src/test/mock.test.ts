@@ -14,6 +14,14 @@ describe('mock API (contract shapes + critical-action rules)', () => {
     call('POST', '/auth/mfa', { code: '123456' });
   });
 
+  it('serves WorkSuite OS ISO downloads with SHA-256 and SBOM', () => {
+    const r = call('GET', '/os/releases');
+    expect(r.data.map((x: any) => x.arch)).toEqual(['amd64', 'arm64']);
+    expect(r.data[0].iso.sha256).toHaveLength(64);
+    expect(r.data[0].sbom.url).toMatch(/\.spdx\.json$/);
+    expect(r.data[0].apt.suite).toBe('trixie-stable');
+  });
+
   it('serves the public site with resolver download URLs and unsupported versions without links', () => {
     const r = call('GET', '/apps/desktop/releases/2.7.0');
     expect(r.packages[0].download_url).toMatch(/^\/download\/desktop\/2\.7\.0\//);

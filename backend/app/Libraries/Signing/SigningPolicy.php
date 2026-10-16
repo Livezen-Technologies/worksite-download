@@ -14,6 +14,10 @@ use App\Libraries\CanonicalJson;
  *  signed by a pinned CI key for the same app/version/build, and the evidence must
  *  carry a QA pass and a Release Manager approval from two different users.
  *
+ *  OS_MANIFEST — WorkSuite OS ring manifest (flat `kid:base64` signature). Must name a
+ *  ring/arch/version, and when it carries artifacts each needs a SHA-256 that matches the
+ *  evidence `artifacts` the API tier hashed (and a pinned CI attestation when required).
+ *
  *  CHANNEL manifest — `current.release_manifest_sha256` must be the hash of a
  *  release manifest that verifies under a release key.
  *
@@ -48,6 +52,7 @@ final class SigningPolicy
             'CHANNEL' => $this->checkChannel($document, $evidence),
             'CHECKSUMS' => $this->checkChecksums($document, $evidence),
             'ROTATION' => [],
+            'OS_MANIFEST' => $this->checkOsManifest($document, $evidence),
             default   => ['Unknown document kind'],
         };
     }
@@ -167,5 +172,37 @@ final class SigningPolicy
         }
 
         return [];
+    }
+
+    private function checkOsManifest(array $doc, array $evidence): array
+    {
+        $errors = [];
+        foreach (['release_id', 'version', 'min_version', 'ring', 'arch'] as $f) {
+            if (! is_string($doc[$f] ?? null) || $doc[$f] === '') {
+                $errors[] = "OS manifest field {$f} missing";
+            }
+        }
+        if (! in_array($doc['ring'] ?? null, ['development', 'pilot', 'stable'], true)) {
+            $errors[] = 'OS manifest ring must be development, pilot or stable';
+        }
+        if (! in_array($doc['arch'] ?? null, ['amd64', 'arm64'], true)) {
+            $errors[] = 'OS manifest arch must be amd64 or arm64';
+        }
+        if (! in_array($doc['state'] ?? 'active', ['active', 'paused', 'pulled'], true)) {
+            $errors[] = 'OS manifest state invalid';
+        }
+        $attestation = $evidence['attestation'] ?? null;
+        if ($this->requireAttestation || $attestation !== null) {
+            $payload = is_array($attestation) ? ($attestation['payload'] ?? null) : null;
+            $kid     = is_array($attestation) ? (string) ($attestation['key_id'] ?? '') : '';
+            if (! is_array($payload) || ! isset($this->ciKeys[$kid])
+                || ! Ed25519::verify(CanonicalJson::encode($payload), Base64Url::decode((string) ($attestation['signature'] ?? '')), $this->ciKeys[$kid])) {
+                $errors[] = 'CI build attestation signature invalid or key not pinned';
+            } elseif ((string) ($payload['version'] ?? '') !== (string) ($doc['version'] ?? '')) {
+                $errors[] = 'Attestation version does not match OS manifest';
+            }
+        }
+
+        return $errors;
     }
 }

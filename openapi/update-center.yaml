@@ -22,6 +22,8 @@ tags:
   - name: Auth
   - name: Admin
   - name: CI
+  - name: OS
+    description: WorkSuite OS updates (§18) — ring manifests, APT repository, ISO downloads.
 components:
   securitySchemes:
     session: { type: apiKey, in: cookie, name: uc_session, description: "Staff/portal session. Non-GET requests also need X-CSRF-Token." }
@@ -33,6 +35,30 @@ components:
     mfa: { name: X-MFA-Token, in: header, required: false, schema: { type: string }, description: "TOTP or recovery code for step-up MFA (critical actions)." }
     releaseId: { name: id, in: path, required: true, schema: { type: string, example: rel_01J8ZK3M4N5P6Q7R8S9T0V1W2X } }
   schemas:
+    OsManifest:
+      type: object
+      description: |
+        WorkSuite OS release manifest for one ring and architecture, verified by the OS package service
+        (Worksuite-OS services/package-service/src/updates.ts). Unlike other Update Center documents it has
+        no `key_id` field: `signature` is `"<key_id>:<standard base64 Ed25519>"` over the canonical JSON
+        (sorted keys, no whitespace) of the object without `signature`. Signed by the release key through the
+        signing service (kind `OS_MANIFEST`).
+      required: [release_id, version, min_version, ring, arch, state, rollout_percent, signature]
+      properties:
+        release_id: { type: string, example: wsos-1.2.0 }
+        version: { type: string, example: 1.2.0 }
+        min_version: { type: string, description: Oldest supported version; devices below it treat the release as mandatory. }
+        ring: { type: string, enum: [development, pilot, stable], description: "Update Center channels DEV (canary), BETA, STABLE." }
+        arch: { type: string, enum: [amd64, arm64] }
+        state: { type: string, enum: [active, paused, pulled] }
+        rollout_percent: { type: integer, minimum: 0, maximum: 100 }
+        security: { type: boolean, description: "release_type security or emergency: installs in Automatic and Notify modes." }
+        critical: { type: boolean, description: "emergency only: installs on battery and metered links." }
+        mandatory: { type: boolean, description: emergency only. }
+        deadline: { type: string, format: date-time }
+        entitlement: { type: string, example: business }
+        rollback_directive: { type: object, properties: { from_version: { type: string }, reason: { type: string } } }
+        signature: { type: string, example: "ws-release-2026a:3q2+7w==" }
     Error:
       type: object
       properties:
@@ -583,6 +609,97 @@ paths:
       responses: { "200": { description: "WITHDRAWN — server releases also cancel every open auto-update plan (FR-DL-WD-01)" } }
   /api/v1/admin/releases/{id}/rollout/{action}:
     post: { tags: [Admin], security: [{ session: [] }], parameters: [{ $ref: "#/components/parameters/releaseId" }, { name: action, in: path, required: true, schema: { type: string, enum: [pause, resume, increase, complete] } }, { $ref: "#/components/parameters/mfa" }], responses: { "200": { description: OK } } }
+  /os/manifests/{ring}/{arch}.json:
+    get:
+      tags: [OS]
+      summary: Signed WorkSuite OS manifest (public; cache 5 min)
+      parameters:
+        - { name: ring, in: path, required: true, schema: { type: string, enum: [development, pilot, stable, canary, beta] } }
+        - { name: arch, in: path, required: true, schema: { type: string, enum: [amd64, arm64] } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OsManifest" } } } }, "404": { $ref: "#/components/responses/Error" } }
+  /desktop/v1/releases/manifest:
+    get:
+      tags: [OS]
+      summary: Same document as /os/manifests (WorkSuite server path)
+      parameters:
+        - { name: platform, in: query, required: true, schema: { const: os } }
+        - { name: ring, in: query, required: true, schema: { type: string } }
+        - { name: arch, in: query, required: true, schema: { type: string } }
+      responses: { "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OsManifest" } } } } }
+  /os/apt/{path}:
+    get:
+      tags: [OS]
+      summary: "APT repository (tools/repo/publish.sh output). dists/ served directly (InRelease signed with the archive key); pool/ 302 to a signed CDN URL."
+      parameters: [{ name: path, in: path, required: true, schema: { type: string, example: dists/trixie-stable/InRelease } }]
+      responses: { "200": { description: OK }, "302": { description: Redirect to CDN }, "404": { $ref: "#/components/responses/Error" } }
+  /os/download/{version}/{arch}/{file}:
+    get:
+      tags: [OS]
+      summary: ISO, .sha256 or SBOM download (302 to a 15-minute signed URL)
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: string } }
+        - { name: arch, in: path, required: true, schema: { type: string } }
+        - { name: file, in: path, required: true, schema: { type: string, example: worksuite-os-1.2.0-amd64.iso } }
+      responses: { "302": { description: Redirect }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/os/releases:
+    get:
+      tags: [OS, Public]
+      summary: Latest non-pulled release per ring and arch, with ISO (SHA-256), SBOM and APT details
+      responses: { "200": { description: "{ data: OsPublicRelease[], keys_url }" } }
+    post:
+      tags: [OS, CI]
+      summary: Publish a version to a ring and sign its manifests (CI may publish development/pilot; stable needs release.publish)
+      security: [{ apiClient: [] }, { session: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: string }
+                ring: { type: string, default: development }
+                arch: { type: string }
+                arches: { type: array, items: { type: string } }
+                release_type: { type: string, enum: [security, feature, emergency], default: feature }
+                min_version: { type: string }
+                rollout_percent: { type: integer }
+                deadline: { type: string, format: date-time }
+                entitlement: { type: string }
+                notes: { type: string }
+      responses: { "201": { description: Published }, "403": { $ref: "#/components/responses/Error" }, "409": { $ref: "#/components/responses/Error" }, "422": { $ref: "#/components/responses/Error" } }
+  /api/v1/os/keys:
+    get: { tags: [OS], summary: "Release public keys as PEM: { keys: [{key_id, public_pem}] }", responses: { "200": { description: OK } } }
+  /api/v1/os/artifacts/{version}/{arch}/{file}:
+    put:
+      tags: [OS, CI]
+      summary: Upload worksuite-os-<version>-<arch>.iso, .iso.sha256 or .sbom.spdx.json (raw body)
+      security: [{ apiClient: [] }]
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: string } }
+        - { name: arch, in: path, required: true, schema: { type: string } }
+        - { name: file, in: path, required: true, schema: { type: string } }
+      requestBody: { content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+      responses: { "201": { description: "{ key, sha256, size_bytes }" } }
+  /api/v1/os/apt:
+    put:
+      tags: [OS, CI]
+      summary: "Import a tar.gz of the publish.sh tree (dists/, pool/, worksuite-archive-keyring.gpg). Each suite needs InRelease; pool only grows."
+      security: [{ apiClient: [] }]
+      requestBody: { content: { application/gzip: { schema: { type: string, format: binary } } } }
+      responses: { "200": { description: "{ files, suites }" }, "422": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/os/releases/{version}/{ring}/{action}:
+    post:
+      tags: [OS, Admin]
+      summary: "pause | resume | pull | rollout {rollout_percent} | promote {to}; body may name arch (default both). Pull re-serves the previous release with a signed rollback directive."
+      security: [{ session: [] }]
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: string } }
+        - { name: ring, in: path, required: true, schema: { type: string } }
+        - { name: action, in: path, required: true, schema: { type: string, enum: [pause, resume, pull, rollout, promote] } }
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/admin/os/emergency:
+    post: { tags: [OS, Admin], summary: "Emergency security release to every ring (critical, mandatory, 100 %)", security: [{ session: [] }], responses: { "201": { description: Published } } }
   /api/v1/admin/server/releases:
     get:
       tags: [Admin]
