@@ -67,11 +67,12 @@ final class Rbac
         'bugtrace.settings'         => ['Bug Trace: privacy settings / deletion', [self::SA]],
         'bugtrace.export'           => ['Bug Trace: export', [self::SA, self::RM]],
         'bugtrace.tenant.view'      => ['Bug Trace: see tenant attribution', [self::SA, self::SUP]],
+        'os.publish'                => ['WorkSuite OS: upload ISO/APT and publish to a ring (CI)', [self::SA, self::RM]],
         'bugtrace.symbols.upload'   => ['Bug Trace: upload symbols (CI)', [self::SA]],
     ];
 
     /** Permissions an API client may be granted (CI never gets release.publish by default — FR-UC-CI-03). */
-    public const CI_DEFAULT = ['release.view', 'release.create', 'release.upload', 'release.file.upload', 'changelog.manage', 'bugtrace.symbols.upload'];
+    public const CI_DEFAULT = ['release.view', 'release.create', 'release.upload', 'release.file.upload', 'changelog.manage', 'bugtrace.symbols.upload', 'os.publish'];
 
     /** @return list<string> */
     public static function permissionsFor(string $role): array

@@ -10,6 +10,7 @@ const NAV = [
   { to: '/apps/desktop/changelog', label: 'Changelog' },
   { to: '/apps/desktop/requirements', label: 'System Requirements' },
   { to: '/channels', label: 'Channels' },
+  { to: '/os', label: 'WorkSuite OS' },
 ];
 
 export function PublicHeader() {

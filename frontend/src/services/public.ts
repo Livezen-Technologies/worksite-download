@@ -23,11 +23,28 @@ export const publicKeys = {
   appChangelog: (slug: string, offset = 0) => ['changelog', slug, offset] as const,
   changelog: (offset = 0) => ['changelog', '*', offset] as const,
   channels: ['channels'] as const,
+  os: ['os-releases'] as const,
 };
 
 export const PAGE_SIZE = 10;
 
+/** WorkSuite OS download (GET /api/v1/os/releases). */
+export interface OsPublicRelease {
+  version: string;
+  ring: 'development' | 'pilot' | 'stable';
+  channel: 'DEV' | 'BETA' | 'STABLE';
+  arch: 'amd64' | 'arm64';
+  release_type: 'SECURITY' | 'FEATURE' | 'EMERGENCY';
+  state: 'active' | 'paused' | 'pulled';
+  published_at: string;
+  notes: string | null;
+  iso: { file_name: string; size_bytes: number; sha256: string | null; url: string; sha256_url: string } | null;
+  sbom: { file_name: string; url: string } | null;
+  apt: { url: string; suite: string; keyring_url: string };
+}
+
 export const publicApi = {
+  os: () => api.get<{ data: OsPublicRelease[]; keys_url: string }>('/os/releases'),
   site: () => api.get<SiteInfo>('/site'),
   apps: () => api.get<{ data: AppSummary[] }>('/apps'),
   app: (slug: string) => api.get<AppDetail>(`/apps/${encodeURIComponent(slug)}`),

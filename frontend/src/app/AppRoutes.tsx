@@ -10,6 +10,7 @@ import { VersionsPage } from '@/pages/public/VersionsPage';
 import { AppChangelogPage, ChangelogPage } from '@/pages/public/ChangelogPage';
 import { RequirementsPage } from '@/pages/public/RequirementsPage';
 import { ChannelsPage } from '@/pages/public/ChannelsPage';
+import { OsPage } from '@/pages/public/OsPage';
 import { SubscriptionPage } from '@/pages/public/SubscriptionPage';
 import { NotFoundBlock } from '@/pages/public/common';
 
@@ -29,6 +30,7 @@ export function PublicRoutes() {
       <Route path="apps/:slug/requirements" element={<RequirementsPage />} />
       <Route path="changelog" element={<ChangelogPage />} />
       <Route path="channels" element={<ChannelsPage />} />
+      <Route path="os" element={<OsPage />} />
       <Route path="subscriptions/confirm" element={<SubscriptionPage mode="confirm" />} />
       <Route path="subscriptions/unsubscribe" element={<SubscriptionPage mode="unsubscribe" />} />
       <Route path="*" element={<NotFoundBlock />} />

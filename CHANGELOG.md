@@ -13,6 +13,16 @@ Section headings used under each version: **Added**, **Changed**, **Deprecated**
 
 ## [Unreleased]
 
+### Added
+
+- **WorkSuite OS updates (§18)** — `os` product (amd64/arm64; rings
+  development = DEV/canary, pilot = BETA, stable), signed ring manifests at
+  `/os/manifests/{ring}/{arch}.json` in the OS's flat Ed25519 scheme (signing
+  service kind `OS_MANIFEST`), the APT repository from `publish.sh` at
+  `/os/apt/`, ISO/SHA-256/SBOM downloads and the public `/os` page, a CI
+  publish API (`os.publish`) and pause / resume / pull (with signed rollback
+  directive) / rollout / promote / emergency for release managers.
+
 ## [0.3.0] - 2026-10-03
 
 ### Added

@@ -22,7 +22,9 @@ final class LocalSigningClient implements SigningClientInterface
             throw new SigningRefusedException($reasons);
         }
 
-        return Ed25519::signDocument($document, $this->keys, $this->releaseKeyId);
+        return $kind === 'OS_MANIFEST'
+            ? Ed25519::signFlat($document, $this->keys, $this->releaseKeyId)
+            : Ed25519::signDocument($document, $this->keys, $this->releaseKeyId);
     }
 
     public function releasePublicKeys(): array

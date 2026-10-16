@@ -216,6 +216,39 @@ or an HTML error page (503/410/404); `/apps/{slug}/releases/{version}/checksums.
 * `GET /health?app=&release=` → `{ releases: {release, release_id, adoption_pct, sessions, crash_free_sessions, crash_free_users, new_issues, regressions, reports, update_failures, gate: 'OK'|'WARN'|'BLOCK'}[], series: {date, release, crash_free_users}[], gate_rules: {...} }`
 * Alerts `GET/POST/PATCH/DELETE /alerts[/{id}]`; policies `GET /policies`, `PUT /policies/{tenant_ref}`; `POST /privacy/delete {user_ref?|installation_ref?, reason}` (MFA); `GET /projects`
 
+## WorkSuite OS (§18)
+Product `os` (kind `OS`, platforms `os/amd64`, `os/arm64`, package types `iso`, `deb`, `sbom`). OS rings map to channels:
+`development` = DEV (alias `canary`), `pilot` = BETA (alias `beta`), `stable` = STABLE. Release types: `security`, `feature`, `emergency`.
+
+**Manifest** — `GET /os/manifests/{ring}/{arch}.json` and `GET /desktop/v1/releases/manifest?platform=os&ring=&arch=` (public, `Cache-Control: public, max-age=300`):
+```json
+{"arch":"amd64","min_version":"1.0.0","release_id":"wsos-1.2.0","ring":"stable","rollout_percent":10,"security":true,
+ "state":"active","version":"1.2.0","signature":"ws-release-2026a:<base64 Ed25519>"}
+```
+Optional: `critical`, `mandatory` (emergency), `deadline` (RFC 3339), `entitlement`, `rollback_directive {from_version, reason}`.
+Signed by the signing service with the release key (kind `OS_MANIFEST`) in the OS scheme: Ed25519 over the canonical JSON
+without `signature`; **no `key_id` field**, the key id is the prefix of `signature`, value is standard base64. This is exactly
+`verifyManifest()` in Worksuite-OS `services/package-service/src/updates.ts`. Devices trust the PEM keys from `GET /api/v1/os/keys`
+installed under `/usr/share/worksuite/keys/release/<key_id>.pem`.
+
+**APT** — `GET /os/apt/dists/{trixie-dev|trixie-pilot|trixie-stable}/…` (InRelease/Release.gpg signed by the archive GPG key in CI),
+`GET /os/apt/pool/…` → 302 signed CDN URL, `GET /os/apt/worksuite-archive-keyring.gpg`.
+
+**Downloads** — `GET /api/v1/os/releases` → `{ data: {version, ring, channel, arch, release_type, state, published_at, notes,
+iso: {file_name, size_bytes, sha256, url, sha256_url}|null, sbom: {file_name, url}|null, apt: {url, suite, keyring_url}}[], keys_url }`;
+`GET /os/download/{version}/{arch}/{file}` → 302 to a 15-minute signed URL. Public page: `/os`.
+
+**CI** (API client with `os.publish`, kept in the OS repo as `UPDATE_CENTER_TOKEN`):
+`PUT /api/v1/os/artifacts/{version}/{arch}/{file}` (raw body: `worksuite-os-<v>-<arch>.iso`, `.iso.sha256`, `.sbom.spdx.json`),
+`PUT /api/v1/os/apt` (tar.gz of the publish.sh tree; every suite needs `InRelease`; `lists/` is ignored; pool only grows),
+`POST /api/v1/os/releases {version, ring='development', arch|arches, release_type, min_version, rollout_percent, deadline, entitlement, notes}`.
+CI may publish to development and pilot; stable needs `release.publish`.
+
+**Release management** (staff, `release.publish`): `POST /api/v1/admin/os/releases/{version}/{ring}/{pause|resume|pull|rollout|promote}`
+`{arch?, reason?, rollout_percent?, to?}`; pull re-serves the previous active release with a signed `rollback_directive`;
+promote to stable starts feature releases at 10 %. `POST /api/v1/admin/os/emergency {version, min_version, arches?}` publishes to every
+ring as security+critical+mandatory at 100 %. `GET /api/v1/admin/os/releases`. Every change is re-signed and audited (`os.release.*`).
+
 ## Portal (`/api/v1/portal`, signed-in portal or staff user)
 * `GET /portal/downloads` → `{ apps: (AppSummary & {channels_available: ChannelCode[], latest_by_channel: Record<ChannelCode, PublicReleaseDetail>})[] }`
 * `GET /portal/history` → `{ data: {app, version, package, created_at}[] }`

@@ -67,3 +67,15 @@ The config lives in `docker/monitoring/prometheus.yml` and the rules in `docker/
 Request counters live in Redis (`uc:metrics` hash), so every API container feeds the same
 series. Unhandled exceptions are counted too, through `MetricsExceptionHandler`. You can
 optionally forward to WorkSuite Core Monitoring with Prometheus `remote_write`.
+
+## WorkSuite OS updates (§18)
+* Migration `2026-10-15-000008_CreateOsReleaseTables` and the catalog seed add the `os` product (amd64/arm64; DEV = canary,
+  BETA = pilot, STABLE). Run `php spark migrate && php spark db:seed CatalogSeeder`.
+* The signing service signs kind `OS_MANIFEST` with the release key in the OS's flat scheme (`signature: "<kid>:<base64>"`).
+  Redeploy `backend/signing` together with the API. Export the release public keys from `GET /api/v1/os/keys` into
+  Worksuite-OS `packaging/keyring/ed25519/release/<kid>.pem` before the first OS release (devices fail closed without them).
+* Create an API client of kind CI with `os.publish` (Admin › Administration › API clients) and store `<client_id>.<secret>` as
+  the `UPDATE_CENTER_TOKEN` secret of Livezen-Technologies/Worksuite-OS. CI publishes to development (canary) / pilot only;
+  promotion to stable and pause / resume / pull / emergency stay with release managers (`/api/v1/admin/os/...`).
+* The APT repository is signed in the OS CI with its archive GPG key (`tools/repo/publish.sh`); the Update Center only stores and
+  serves it. Suites carry a 14-day `Valid-Until`, so a release (or the scheduled re-sign job in the OS repo) must run at least weekly.
