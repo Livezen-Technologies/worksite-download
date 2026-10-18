@@ -368,7 +368,8 @@ prepare_layout() {
   [[ $DRY_RUN -eq 1 ]] && { info "(dry run) $INSTALL_DIR/{releases,shared,backups,current}"; return 0; }
   id "$DEPLOY_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/worksuite --shell /sbin/nologin "$DEPLOY_USER"
   install -d -m 0755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$INSTALL_DIR" "$INSTALL_DIR/releases"
-  install -d -m 0700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$INSTALL_DIR/backups"
+  # The app user may list the backups (System › Monitoring checks their age and size) but read none of them.
+  install -d -m 0750 -o "$DEPLOY_USER" -g "$WEB_USER" "$INSTALL_DIR/backups"
   install -d -m 0750 -o "$DEPLOY_USER" -g "$WEB_USER" "$INSTALL_DIR/shared" "$INSTALL_DIR/shared/public"
   install -d -m 0770 -o "$WEB_USER" -g "$WEB_USER" "$INSTALL_DIR/shared/writable" "$INSTALL_DIR/shared/public/uploads"
   for d in cache logs session uploads debugbar secrets; do install -d -m 0770 -o "$WEB_USER" -g "$WEB_USER" "$INSTALL_DIR/shared/writable/$d"; done
@@ -499,11 +500,15 @@ write_env() {
   local env="$INSTALL_DIR/shared/.env"
   if [[ -f "$env" ]]; then ok "Keeping the existing $env"; return 0; fi
   [[ $DRY_RUN -eq 1 ]] && { info "(dry run)"; return 0; }
-  local enc jobkey jwt rt wa
+  local enc jobkey jwt wa mon_units
   enc=$("$PHP_BIN" -r 'echo bin2hex(random_bytes(32));')
   jobkey=$("$PHP_BIN" -r 'echo base64_encode(random_bytes(32));')
-  jwt=$(randpw 64); rt=$(randpw 48); wa=$(randpw 48)
+  jwt=$(randpw 64); wa=$(randpw 48)
   ADMIN_PASS=$(randpw 20)
+  mon_units="nginx,$FPM_SERVICE,$REDIS_SERVICE,worksuite-updater"
+  [[ $EXTERNAL_DB -eq 1 ]] || mon_units="$mon_units,mariadb"
+  [[ $REALTIME -eq 1 ]] && mon_units="$mon_units,worksuite-realtime"
+  [[ $WHATSAPP -eq 1 ]] && mon_units="$mon_units,worksuite-whatsapp"
   put_file -m 0640 -o "$DEPLOY_USER" -g "$WEB_USER" "$env" <<EOF
 # WorkSuite Server — written by the WorkSuite installer $INSTALLER_VERSION on $(date -u +%FT%TZ)
 CI_ENVIRONMENT = production
@@ -527,9 +532,14 @@ session.driver = 'CodeIgniter\Session\Handlers\RedisHandler'
 session.savePath = 'tcp://127.0.0.1:6379?database=1'
 cache.handler = redis
 
-REALTIME_SECRET = '$rt'
-REALTIME_PORT = 8091
-WA_SERVICE_KEY = '$wa'
+# The realtime gateway's key is derived from jwt.secret by the app (spark realtime:secret --write, step 10).
+# The WhatsApp bridge reads the same key from /etc/worksuite-whatsapp.env (WA_SERVICE_KEY).
+whatsapp.bridge_key = '$wa'
+
+# Monitoring (System › Monitoring): what this installer runs and where its backups go.
+monitor.services = '$mon_units'
+monitor.backup_path = '$INSTALL_DIR/backups'
+monitor.backup_glob = 'nightly-*/db.sql.zst'
 
 # Updates and licensing (System › Updates, System › License)
 systemupdate.installRoot = $INSTALL_DIR
@@ -545,14 +555,16 @@ license.fingerprintMode = $FP_MODE
 install.admin_email = '$ADMIN_EMAIL'
 install.admin_password = '$ADMIN_PASS'
 EOF
+  # No REALTIME_SECRET here: the gateway reads the app's own key from REALTIME_SECRET_FILE (step 10).
   put_file -m 0640 -o root -g "$WEB_USER" /etc/worksuite/realtime.env <<EOF
 REALTIME_BIND=127.0.0.1
 REALTIME_PORT=8091
-REALTIME_SECRET=$rt
+REALTIME_SECRET_FILE=$INSTALL_DIR/shared/writable/realtime/secret
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 EOF
-  put_file -m 0640 -o root -g "$WEB_USER" /etc/worksuite/whatsapp.env <<EOF
+  # The path whatsapp-bridge/worksuite-whatsapp.service reads (and production uses).
+  put_file -m 0640 -o root -g root /etc/worksuite-whatsapp.env <<EOF
 WA_SERVICE_KEY=$wa
 EOF
   ok "$env (0640, $DEPLOY_USER:$WEB_USER)"
@@ -716,6 +728,8 @@ PrivateTmp=true
 WantedBy=multi-user.target
 EOF
     (cd "$INSTALL_DIR/current/realtime" && { [[ -d node_modules || ! -f package.json ]] || npm ci --omit=dev >>"$LOG" 2>&1; }) || warn "Realtime dependencies did not install"
+    # The key the app signs tickets with, derived from its own secrets: write it where REALTIME_SECRET_FILE points.
+    spark realtime:secret --write >>"$LOG" 2>&1 || warn "The realtime key file was not written (spark realtime:secret --write)"
     systemctl daemon-reload; systemctl enable --now worksuite-realtime >>"$LOG" 2>&1 && ok "worksuite-realtime (127.0.0.1:8091)" || warn "The realtime gateway did not start"
   fi
   if [[ $WHATSAPP -eq 1 && -d "$INSTALL_DIR/current/whatsapp-bridge" ]]; then
@@ -780,7 +794,8 @@ EOF
 # Nightly WorkSuite backup: database and configuration. Keeps 14 days.
 set -euo pipefail
 D=$INSTALL_DIR/backups/nightly-\$(date +%F)
-install -d -m 0700 "\$D"
+umask 077
+install -d -m 0710 -g $WEB_USER "\$D"
 mysqldump --defaults-extra-file=/etc/worksuite/backup.cnf --single-transaction --quick --routines --triggers $DB_NAME | zstd -q -T0 -o "\$D/db.sql.zst"
 cp -a $INSTALL_DIR/shared/.env "\$D/env"
 tar -C $INSTALL_DIR/shared/writable -cf "\$D/secrets.tar" secrets
