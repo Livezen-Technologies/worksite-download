@@ -36,6 +36,20 @@ switch (#11).
 
 ### Fixed
 
+- **Installer: config that disagreed with the app** (not deployed). Realtime: the
+  installer wrote a random `REALTIME_SECRET` to `/etc/worksuite/realtime.env` while
+  the app signs with a key it derives itself, so every realtime subscription was
+  refused; it now points the gateway at `REALTIME_SECRET_FILE`
+  (`<root>/shared/writable/realtime/secret`) and runs `spark realtime:secret --write`
+  before starting it (rotation then needs no restart). WhatsApp: the key now goes to
+  `/etc/worksuite-whatsapp.env` (what the unit reads, and production's path) and to
+  `.env` as `whatsapp.bridge_key` (what the app reads) instead of `WA_SERVICE_KEY`.
+  Monitoring: `.env` gets `monitor.services` (only the units installed),
+  `monitor.backup_path` and `monitor.backup_glob = nightly-*/db.sql.zst`, and the
+  backups folder is listable (not readable) by the app user so the age check works.
+  Needs the matching worksuite PR for the env-key defaults and the
+  `worksuite-whatsapp` drain/sudoers name. `InstallerTest` checks all of it.
+
 - **The Linux repositories script test on CI.** The tests' fake `.rpm` files
   were refused where the real `rpm` is installed (GitHub's Ubuntu runners), and
   the real reprepro skipped the test `.deb` for having no `Section`. The tests

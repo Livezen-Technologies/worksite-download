@@ -29,6 +29,34 @@ final class InstallerTest extends UcTestCase
         $this->assertStringContainsString('license:activate --key', $script);
     }
 
+    /** The files the installer writes agree with what the WorkSuite app, its units and its sudoers rule read. */
+    public function testTheInstallerWritesWhatTheAppReads(): void
+    {
+        $script = (string) file_get_contents(self::DIR . 'install.sh');
+
+        // Realtime: the app derives the gateway key; the installer never invents one.
+        $this->assertStringNotContainsString('REALTIME_SECRET=$rt', $script);
+        $this->assertStringNotContainsString("REALTIME_SECRET = '", $script);
+        $this->assertStringContainsString('REALTIME_SECRET_FILE=$INSTALL_DIR/shared/writable/realtime/secret', $script);
+        $this->assertStringContainsString('spark realtime:secret --write', $script);
+        $this->assertLessThan(strpos($script, 'systemctl enable --now worksuite-realtime'), strpos($script, 'spark realtime:secret --write'));
+
+        // WhatsApp: the unit's env file (production's path) and the key name the app reads.
+        $this->assertStringContainsString('/etc/worksuite-whatsapp.env <<EOF', $script);
+        $this->assertStringNotContainsString('/etc/worksuite/whatsapp.env', $script);
+        $this->assertStringContainsString("whatsapp.bridge_key = '\$wa'", $script);
+        $this->assertStringNotContainsString('worksuite-whatsapp-bridge', $script);
+
+        // Monitoring follows the installer's layout and installs no worksuite-rtc.
+        $this->assertStringContainsString("monitor.backup_path = '\$INSTALL_DIR/backups'", $script);
+        $this->assertStringContainsString("monitor.backup_glob = 'nightly-*/db.sql.zst'", $script);
+        $this->assertStringContainsString('monitor.services = ', $script);
+        $this->assertStringNotContainsString('worksuite-rtc', $script);
+
+        // spark reads `--opt value`; `--opt=value` is silently ignored.
+        $this->assertDoesNotMatchRegularExpression('/spark[^\n]*\s--[a-z][a-z0-9-]*=/', $script);
+    }
+
     public function testTheServerPageCarriesTheInstallGuide(): void
     {
         $res  = $this->get('api/v1/apps/server');
