@@ -59,6 +59,7 @@ class CatalogSeeder extends Seeder
             ['WorkSuite Server Agent', 'server-agent', 'lk.worksuite.serveragent', 'DESKTOP', 'Monitoring and update agent for WorkSuite servers.', [['linux', 'x64', ['deb', 'rpm'], 1, 'deb', null], ['linux', 'arm64', ['deb', 'rpm'], 0, 'deb', null]], 5],
             ['WorkSuite OS', 'os', 'lk.worksuite.os', 'OS', 'WorkSuite OS — a Debian-based desktop operating system with the WorkSuite shell, signed automatic updates and central management.', [['os', 'amd64', ['iso', 'deb', 'sbom'], 1, 'iso', null], ['os', 'arm64', ['iso', 'deb', 'sbom'], 0, 'iso', null]], 7],
             ['WorkSuite Server (Web)', 'server', 'lk.worksuite.server', 'SERVER', 'The complete WorkSuite web system — Free, Business and Enterprise editions — for self-hosted installations.', [['server', 'any', ['zip'], 1, 'zip', null]], 6],
+            ['Worksuite FrameFlow', 'frameflow', 'lk.worksuite.frameflow', 'DESKTOP', 'Video editor for WorkSuite — timeline editing, captions and on-device AI export, for Windows, macOS and Linux.', [['windows', 'x64', ['exe'], 1, 'exe', null], ['macos', 'arm64', ['dmg'], 1, 'dmg', '12.0'], ['macos', 'x64', ['dmg'], 1, 'dmg', '12.0'], ['linux', 'x64', ['appimage', 'deb'], 1, 'appimage', null]], 7],
         ];
         foreach ($apps as [$name, $slug, $ident, $kind, $desc, $platforms, $sort]) {
             if ($this->db->table('applications')->where('slug', $slug)->countAllResults() > 0) {
